@@ -68,10 +68,9 @@ class _PlanningScreenState extends State<PlanningScreen> {
     setState(() => _isChangingWeek = true);
 
     final provider = context.read<PlanningProvider>();
-    await provider.nextWeek();
-    provider.selectDay(0); // Monday
+    await provider.nextWeek(); 
 
-    // Recreate page controller at Monday without animation
+    // recreate page controller at monday without animation
     _pageController.dispose();
     _pageController = PageController(initialPage: 0);
 
@@ -86,10 +85,10 @@ class _PlanningScreenState extends State<PlanningScreen> {
     setState(() => _isChangingWeek = true);
 
     final provider = context.read<PlanningProvider>();
-    await provider.previousWeek();
-    provider.selectDay(4); // Friday
+    await provider
+        .previousWeek(); 
 
-    // Recreate page controller at Friday without animation
+    // recreate page controller at friday without animation
     _pageController.dispose();
     _pageController = PageController(initialPage: 4);
 
@@ -122,7 +121,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
     final provider = context.read<PlanningProvider>();
     await provider.goToToday();
 
-    // Reset page controller to today's day
+    // recreate page controller to today
     _pageController.dispose();
     _pageController = PageController(initialPage: provider.selectedDayIndex);
 
@@ -641,7 +640,7 @@ class _CoursesViewState extends State<_CoursesView> {
           final currentPage = widget.pageController.page?.round() ?? 0;
 
           if (currentPage == 4 && notification.overscroll > 0) {
-            // Friday, swiping right 
+            // Friday, swiping right
             _overscrollAccumulator += notification.overscroll;
             if (_overscrollAccumulator > _overscrollThreshold) {
               _isHandlingOverscroll = true;

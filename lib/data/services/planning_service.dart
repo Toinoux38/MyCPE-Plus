@@ -73,6 +73,33 @@ class PlanningService {
     return _cacheService.hasCacheForRange(monday, friday);
   }
 
+  /// Get cached events for an arbitrary date range
+  Future<List<PlanningEvent>?> getCachedEventsForRange(
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    return _cacheService.getCachedEventsForRange(startDate, endDate);
+  }
+
+  /// Fetch and cache a full month of planning data
+  Future<Result<List<PlanningEvent>>> fetchAndCacheMonthPlanning(
+    DateTime month,
+  ) async {
+    final firstDay = DateTime(month.year, month.month, 1);
+    final lastDay = DateTime(month.year, month.month + 1, 0);
+
+    final result = await getPlanning(startDate: firstDay, endDate: lastDay);
+
+    switch (result) {
+      case Success(data: final events):
+        await _cacheService.mergeEvents(events);
+      case Failure():
+        break;
+    }
+
+    return result;
+  }
+
   /// Fetch and cache 2 months of planning data (for background prefetch)
   Future<Result<List<PlanningEvent>>> fetchAndCacheExtendedPlanning() async {
     final now = DateTime.now();

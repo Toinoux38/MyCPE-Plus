@@ -21,6 +21,9 @@ enum PlanningSyncStatus {
   offline,
 }
 
+/// View mode for the planning screen
+enum PlanningViewMode { day, week, month }
+
 /// Provider for planning/schedule state management
 class PlanningProvider extends ChangeNotifier {
   final PlanningService _planningService;
@@ -36,6 +39,15 @@ class PlanningProvider extends ChangeNotifier {
   DateTime? _lastSyncTime;
   bool _isOffline = false;
   bool _hasInitializedCache = false;
+
+  /// Current view mode (day, week, month)
+  PlanningViewMode _viewMode = PlanningViewMode.day;
+
+  /// Current month being viewed in month mode
+  DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month);
+
+  /// Cached events for the current month (keyed by day)
+  Map<DateTime, List<PlanningEvent>> _monthEvents = {};
 
   PlanningProvider({required PlanningService planningService})
     : _planningService = planningService {
@@ -58,6 +70,9 @@ class PlanningProvider extends ChangeNotifier {
   DateTime? get lastSyncTime => _lastSyncTime;
   bool get isOffline => _isOffline;
   bool get isSyncing => _syncStatus == PlanningSyncStatus.syncing;
+  PlanningViewMode get viewMode => _viewMode;
+  DateTime get currentMonth => _currentMonth;
+  Map<DateTime, List<PlanningEvent>> get monthEvents => _monthEvents;
 
   /// Get selected date
   DateTime get selectedDate =>
@@ -258,6 +273,154 @@ class PlanningProvider extends ChangeNotifier {
     _errorMessage = null;
     _isOffline = false;
     _hasInitializedCache = false;
+    _viewMode = PlanningViewMode.day;
+    _monthEvents = {};
     notifyListeners();
+  }
+
+  // ===========================================================================
+  // VIEW MODE
+  // ===========================================================================
+
+  /// Switch between day, week, and month view
+  void setViewMode(PlanningViewMode mode) {
+    if (_viewMode == mode) return;
+    _viewMode = mode;
+
+    if (mode == PlanningViewMode.month) {
+      // Sync month to whatever week we're viewing
+      _currentMonth = DateTime(_currentMonday.year, _currentMonday.month);
+      loadMonthEvents();
+    } else if (mode == PlanningViewMode.week || mode == PlanningViewMode.day) {
+      // If coming from month view, ensure week data is in sync
+      if (_state == PlanningState.loaded) {
+        notifyListeners();
+      }
+    } else {
+      notifyListeners();
+    }
+  }
+
+  // ===========================================================================
+  // MONTH VIEW
+  // ===========================================================================
+
+  /// Navigate to previous month
+  void previousMonth() {
+    _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
+    loadMonthEvents();
+  }
+
+  /// Navigate to next month
+  void nextMonth() {
+    _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
+    loadMonthEvents();
+  }
+
+  /// Go to current month
+  void goToCurrentMonth() {
+    final now = DateTime.now();
+    _currentMonth = DateTime(now.year, now.month);
+    loadMonthEvents();
+  }
+
+  /// Load events for the current month — cache-first, then fetch from API
+  Future<void> loadMonthEvents() async {
+    final firstDay = DateTime(_currentMonth.year, _currentMonth.month, 1);
+    final lastDay = DateTime(_currentMonth.year, _currentMonth.month + 1, 0);
+
+    // Show cached data immediately
+    final cachedEvents = await _planningService.getCachedEventsForRange(
+      firstDay,
+      lastDay,
+    );
+
+    _monthEvents = {};
+    if (cachedEvents != null) {
+      _populateMonthEvents(cachedEvents);
+    }
+    notifyListeners();
+
+    // Then fetch full month from API in background to fill gaps
+    _fetchMonthInBackground();
+  }
+
+  /// Fetch the full month from the API and update month events
+  Future<void> _fetchMonthInBackground() async {
+    final result = await _planningService.fetchAndCacheMonthPlanning(
+      _currentMonth,
+    );
+
+    result.when(
+      success: (events) {
+        _monthEvents = {};
+        _populateMonthEvents(events);
+        _lastSyncTime = DateTime.now();
+        notifyListeners();
+      },
+      failure: (message, statusCode) {
+        // Keep showing cached data
+      },
+    );
+  }
+
+  /// Force refresh month data from API
+  Future<void> refreshMonthEvents() async {
+    final result = await _planningService.fetchAndCacheMonthPlanning(
+      _currentMonth,
+    );
+
+    result.when(
+      success: (events) {
+        _monthEvents = {};
+        _populateMonthEvents(events);
+        _lastSyncTime = DateTime.now();
+        notifyListeners();
+      },
+      failure: (message, statusCode) {
+        // Keep existing data
+      },
+    );
+  }
+
+  /// Populate _monthEvents map from a list of events
+  void _populateMonthEvents(List<PlanningEvent> events) {
+    for (final event in events) {
+      if (event.dateDebut != null && event.isValidCourse) {
+        final dayKey = DateTime(
+          event.dateDebut!.year,
+          event.dateDebut!.month,
+          event.dateDebut!.day,
+        );
+        _monthEvents.putIfAbsent(dayKey, () => []).add(event);
+      }
+    }
+  }
+
+  /// Check if a day has courses in the month view
+  bool dayHasCourses(DateTime date) {
+    final dayKey = DateTime(date.year, date.month, date.day);
+    return _monthEvents.containsKey(dayKey) && _monthEvents[dayKey]!.isNotEmpty;
+  }
+
+  /// Get events for a specific day in the month view
+  List<PlanningEvent> getEventsForDay(DateTime date) {
+    final dayKey = DateTime(date.year, date.month, date.day);
+    return _monthEvents[dayKey] ?? [];
+  }
+
+  /// Select a day from month/week view and switch to day view
+  Future<void> selectDateFromCalendar(DateTime date) async {
+    final monday = date_utils.DateUtils.getMondayOfWeek(date);
+    final dayDiff = date.difference(monday).inDays;
+
+    // Only allow weekdays
+    if (dayDiff < 0 || dayDiff > 4) return;
+
+    _currentMonday = monday;
+    _selectedDayIndex = dayDiff;
+    _viewMode = PlanningViewMode.day;
+
+    await loadWeekPlanning();
   }
 }

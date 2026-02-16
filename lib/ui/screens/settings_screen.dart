@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/localization/app_locale.dart';
@@ -496,13 +498,38 @@ class _ThemeOption {
 // ABOUT CARD
 // =============================================================================
 
-class _AboutCard extends StatelessWidget {
+class _AboutCard extends StatefulWidget {
   final SettingsProvider settings;
 
   const _AboutCard({required this.settings});
 
   @override
+  State<_AboutCard> createState() => _AboutCardState();
+}
+
+class _AboutCardState extends State<_AboutCard> {
+  String _version = '';
+  String _buildNumber = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _version = info.version;
+        _buildNumber = info.buildNumber;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final settings = widget.settings;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surfaceVariantColor = isDark
         ? AppColors.surfaceVariantDark
@@ -511,6 +538,10 @@ class _AboutCard extends StatelessWidget {
         ? AppColors.textPrimaryDark
         : AppColors.textPrimary;
     final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+
+    final versionText = _version.isNotEmpty
+        ? '${settings.strings.version} $_version+$_buildNumber'
+        : '${settings.strings.version} ...';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -534,7 +565,16 @@ class _AboutCard extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Iconsax.book, color: Colors.white, size: 28),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: SvgPicture.asset(
+                    'assets/images/app_logo.svg',
+                    colorFilter: const ColorFilter.mode(
+                      Colors.white,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -567,7 +607,7 @@ class _AboutCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        '${settings.strings.version} 1.0.0',
+                        versionText,
                         style: GoogleFonts.poppins(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -593,8 +633,41 @@ class _AboutCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _InfoRow(icon: Iconsax.calendar, label: 'Year', value: '2026'),
+          const SizedBox(height: 12),
+          _StudioRow(),
         ],
       ),
+    );
+  }
+}
+
+class _StudioRow extends StatelessWidget {
+  const _StudioRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
+    final textPrimaryColor = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+    final textSecondaryColor = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondary;
+
+    return Row(
+      children: [
+        Text(
+          'Studio',
+          style: GoogleFonts.poppins(fontSize: 14, color: textSecondaryColor),
+        ),
+        const Spacer(),
+        SvgPicture.asset(
+          'assets/images/fluffin_studio_logo.svg',
+          height: 22,
+          colorFilter: ColorFilter.mode(textSecondaryColor, BlendMode.srcIn),
+        ),
+      ],
     );
   }
 }

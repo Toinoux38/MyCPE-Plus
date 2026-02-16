@@ -106,6 +106,11 @@ abstract class AppStrings {
   String get lastUpdated;
   String get mayNotBeUpToDate;
 
+  // Planning view modes
+  String get dayView;
+  String get weekView;
+  String get monthView;
+
   // Days
   String get monday;
   String get tuesday;
@@ -326,6 +331,14 @@ class EnglishStrings implements AppStrings {
   String get lastUpdated => 'Updated';
   @override
   String get mayNotBeUpToDate => 'May not be up to date';
+
+  // Planning view modes
+  @override
+  String get dayView => 'Day';
+  @override
+  String get weekView => 'Week';
+  @override
+  String get monthView => 'Month';
 
   // Days
   @override
@@ -561,6 +574,14 @@ class FrenchStrings implements AppStrings {
   String get lastUpdated => 'Mis à jour';
   @override
   String get mayNotBeUpToDate => 'Peut ne pas être à jour';
+
+  // Planning view modes
+  @override
+  String get dayView => 'Jour';
+  @override
+  String get weekView => 'Semaine';
+  @override
+  String get monthView => 'Mois';
 
   // Days
   @override

@@ -8,6 +8,8 @@ import '../../core/utils/date_utils.dart' as date_utils;
 import '../../data/models/planning_event.dart';
 import '../../providers/planning_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../widgets/planning_month_view.dart';
+import '../widgets/planning_week_view.dart';
 import '../widgets/state_views.dart';
 
 /// Clean, simple planning screen with day-based view
@@ -149,6 +151,14 @@ class _PlanningScreenState extends State<PlanningScreen> {
                   isToday: planning.isToday,
                   onTodayTap: _goToToday,
                   strings: settings.strings,
+                  viewMode: planning.viewMode,
+                  currentMonth: planning.currentMonth,
+                ),
+                // View mode toggle
+                _ViewModeToggle(
+                  viewMode: planning.viewMode,
+                  onChanged: planning.setViewMode,
+                  strings: settings.strings,
                 ),
                 Expanded(
                   child: _MainCard(
@@ -186,31 +196,190 @@ class _DateHeader extends StatelessWidget {
   final bool isToday;
   final VoidCallback onTodayTap;
   final dynamic strings;
+  final PlanningViewMode viewMode;
+  final DateTime currentMonth;
 
   const _DateHeader({
     required this.selectedDate,
     required this.isToday,
     required this.onTodayTap,
     required this.strings,
+    required this.viewMode,
+    required this.currentMonth,
   });
 
   @override
   Widget build(BuildContext context) {
+    // In month view, show month/year as header; in week/day, show selected date
+    final displayDate = viewMode == PlanningViewMode.month
+        ? currentMonth
+        : selectedDate;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
       child: Row(
         children: [
           // Date display
-          _DateDisplay(selectedDate: selectedDate),
+          if (viewMode == PlanningViewMode.month)
+            _MonthHeaderDisplay(month: currentMonth)
+          else
+            _DateDisplay(selectedDate: displayDate),
           const Spacer(),
           // Today button
           _TodayButton(
             label: strings.today,
-            isToday: isToday,
+            isToday: isToday && viewMode == PlanningViewMode.day,
             onTap: onTodayTap,
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// VIEW MODE TOGGLE
+// =============================================================================
+
+class _ViewModeToggle extends StatelessWidget {
+  final PlanningViewMode viewMode;
+  final ValueChanged<PlanningViewMode> onChanged;
+  final dynamic strings;
+
+  const _ViewModeToggle({
+    required this.viewMode,
+    required this.onChanged,
+    required this.strings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? AppColors.surfaceVariantDark
+        : AppColors.divider.withOpacity(0.5);
+
+    final modes = [
+      (PlanningViewMode.day, strings.dayView as String),
+      (PlanningViewMode.week, strings.weekView as String),
+      (PlanningViewMode.month, strings.monthView as String),
+    ];
+
+    final selectedIndex = modes.indexWhere((e) => e.$1 == viewMode);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final tabWidth = constraints.maxWidth / modes.length;
+
+            return Stack(
+              children: [
+                // Animated sliding indicator
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  left: selectedIndex * tabWidth,
+                  top: 0,
+                  bottom: 0,
+                  width: tabWidth,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          AppColors.gradientStart,
+                          AppColors.gradientEnd,
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.gradientStart.withOpacity(0.3),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Tab labels
+                Row(
+                  children: modes.map((entry) {
+                    final (mode, label) = entry;
+                    final isSelected = viewMode == mode;
+
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () => onChanged(mode),
+                        behavior: HitTestBehavior.opaque,
+                        child: Center(
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 200),
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white
+                                  : (isDark
+                                        ? AppColors.textSecondaryDark
+                                        : AppColors.textSecondary),
+                            ),
+                            child: Text(label),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// MONTH HEADER DISPLAY
+// =============================================================================
+
+class _MonthHeaderDisplay extends StatelessWidget {
+  final DateTime month;
+
+  const _MonthHeaderDisplay({required this.month});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textPrimaryColor = isDark
+        ? AppColors.textPrimaryDark
+        : AppColors.textPrimary;
+
+    final monthName = date_utils.DateUtils.formatMonthYear(month);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          monthName,
+          style: GoogleFonts.poppins(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            color: textPrimaryColor,
+            height: 1.1,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -497,15 +666,17 @@ class _MainCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         child: Column(
           children: [
-            // Day selector
-            _DaySelector(
-              currentMonday: planning.currentMonday,
-              selectedDayIndex: planning.selectedDayIndex,
-              onDayTapped: onDayTapped,
-              onPreviousWeek: onPreviousWeek,
-              onNextWeek: onNextWeek,
-            ),
-            Divider(height: 1, color: dividerColor),
+            // Day selector — only show in day view
+            if (planning.viewMode == PlanningViewMode.day) ...[
+              _DaySelector(
+                currentMonday: planning.currentMonday,
+                selectedDayIndex: planning.selectedDayIndex,
+                onDayTapped: onDayTapped,
+                onPreviousWeek: onPreviousWeek,
+                onNextWeek: onNextWeek,
+              ),
+              Divider(height: 1, color: dividerColor),
+            ],
             // Content
             Expanded(child: _buildContent()),
             // Last updated footer
@@ -523,6 +694,32 @@ class _MainCard extends StatelessWidget {
   Widget _buildContent() {
     final strings = settings.strings;
 
+    // Month and week views handle their own loading/empty states
+    if (planning.viewMode == PlanningViewMode.month) {
+      return PlanningMonthView(planning: planning, strings: strings);
+    }
+
+    if (planning.viewMode == PlanningViewMode.week) {
+      if (planning.state == PlanningState.initial ||
+          planning.state == PlanningState.loading) {
+        return LoadingIndicator(message: strings.loadingSchedule);
+      }
+      if (planning.state == PlanningState.error) {
+        return ErrorView(
+          message: planning.errorMessage ?? strings.noScheduleAvailable,
+          onRetry: planning.refresh,
+          retryLabel: strings.retry,
+        );
+      }
+      return PlanningWeekView(
+        planning: planning,
+        strings: strings,
+        onPreviousWeek: onPreviousWeek,
+        onNextWeek: onNextWeek,
+      );
+    }
+
+    // Day view (default)
     switch (planning.state) {
       case PlanningState.initial:
       case PlanningState.loading:

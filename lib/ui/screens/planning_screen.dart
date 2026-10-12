@@ -872,9 +872,9 @@ class _CourseCard extends StatelessWidget {
         children: [
           // Time column
           SizedBox(
-            width: 56,
+            width: 72,
             child: Padding(
-              padding: const EdgeInsets.only(left: 16, top: 16),
+              padding: const EdgeInsets.only(left: 16, right: 8, top: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

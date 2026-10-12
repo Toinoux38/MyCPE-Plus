@@ -14,6 +14,7 @@ class PlanningEvent {
   final bool isBreak;
   final bool isEmpty;
   final String? description;
+  final String? favoriMatiere;
 
   const PlanningEvent({
     this.id,
@@ -28,6 +29,7 @@ class PlanningEvent {
     this.isBreak = false,
     this.isEmpty = false,
     this.description,
+    this.favoriMatiere,
   });
 
   factory PlanningEvent.fromJson(Map<String, dynamic> json) {
@@ -46,6 +48,7 @@ class PlanningEvent {
       isBreak: json['is_break'] as bool? ?? false,
       isEmpty: json['is_empty'] as bool? ?? false,
       description: json['description'] as String?,
+      favoriMatiere: (json['favori'] as Map<String, dynamic>?)?['f3'] as String?
     );
   }
 
@@ -64,6 +67,7 @@ class PlanningEvent {
       'is_break': isBreak,
       'is_empty': isEmpty,
       'description': description,
+      'favori_matiere': favoriMatiere,
     };
   }
 
@@ -103,7 +107,7 @@ class PlanningEvent {
   /// Get display title
   String get displayTitle {
     if (isBreak) return 'Break';
-    return matiere ?? 'Untitled';
+    return favoriMatiere ?? matiere ?? 'Untitled';
   }
 
   /// Check if event is a valid course (not break or empty)

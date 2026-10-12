@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
 import '../../core/utils/grade_utils.dart';
 import '../../data/models/course_grades.dart';
 import '../../providers/grades_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../widgets/state_views.dart';
+import '../widgets/sync_status_footer.dart';
 
 class GradesScreen extends StatefulWidget {
   const GradesScreen({super.key});
@@ -33,10 +35,7 @@ class _GradesScreenState extends State<GradesScreen> {
   Widget build(BuildContext context) {
     return Consumer2<GradesProvider, SettingsProvider>(
       builder: (context, grades, settings, _) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final backgroundColor = isDark
-            ? AppColors.backgroundDark
-            : AppColors.background;
+        final backgroundColor = context.backgroundColor;
 
         return Container(
           color: backgroundColor,
@@ -61,16 +60,13 @@ class _GradesScreenState extends State<GradesScreen> {
 // =============================================================================
 
 class _GradesHeader extends StatelessWidget {
-  final dynamic strings;
+  final AppStrings strings;
 
   const _GradesHeader({required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
+    final textPrimaryColor = context.textPrimaryColor;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
@@ -92,7 +88,7 @@ class _GradesHeader extends StatelessWidget {
           const SizedBox(width: 16),
           Text(
             strings.grades,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w600,
               color: textPrimaryColor,
@@ -116,9 +112,8 @@ class _MainCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final surfaceColor = context.surfaceColor;
+    final dividerColor = context.dividerColor;
     // Account for floating navigation bar
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final navBarSpace = 56 + (bottomPadding > 0 ? bottomPadding : 16);
@@ -130,7 +125,7 @@ class _MainCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -145,6 +140,12 @@ class _MainCard extends StatelessWidget {
             Divider(height: 1, color: dividerColor),
             // Content
             Expanded(child: _buildContent()),
+            SyncStatusFooter(
+              isSyncing: grades.isSyncing,
+              isOffline: grades.isOffline,
+              lastSync: grades.lastUpdated,
+              strings: settings.strings,
+            ),
           ],
         ),
       ),
@@ -181,14 +182,13 @@ class _MainCard extends StatelessWidget {
 
 class _StatsBar extends StatelessWidget {
   final GradesProvider grades;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _StatsBar({required this.grades, required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final dividerColor = context.dividerColor;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -225,13 +225,8 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Row(
       children: [
@@ -254,7 +249,7 @@ class _StatItem extends StatelessWidget {
           children: [
             Text(
               value,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: textPrimaryColor,
@@ -262,7 +257,7 @@ class _StatItem extends StatelessWidget {
             ),
             Text(
               label,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 12,
                 color: textSecondaryColor,
               ),
@@ -280,7 +275,7 @@ class _StatItem extends StatelessWidget {
 
 class _CoursesList extends StatelessWidget {
   final GradesProvider grades;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _CoursesList({required this.grades, required this.strings});
 
@@ -315,10 +310,7 @@ class _EmptyGrades extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Center(
       child: Column(
@@ -327,12 +319,12 @@ class _EmptyGrades extends StatelessWidget {
           Icon(
             Iconsax.medal,
             size: 64,
-            color: textSecondaryColor.withOpacity(0.4),
+            color: textSecondaryColor.withValues(alpha: 0.4),
           ),
           const SizedBox(height: 16),
           Text(
             message,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: textSecondaryColor,
@@ -352,7 +344,7 @@ class _CourseCard extends StatelessWidget {
   final CourseGrades course;
   final bool isExpanded;
   final VoidCallback onTap;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _CourseCard({
     required this.course,
@@ -363,14 +355,9 @@ class _CourseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final surfaceVariantColor = context.surfaceVariantColor;
+    final textPrimaryColor = context.textPrimaryColor;
+    final dividerColor = context.dividerColor;
 
     final average = course.averageGrade;
     final gradeColor = GradeUtils.getGradeColor(average);
@@ -382,7 +369,7 @@ class _CourseCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: isExpanded
             ? Border.all(
-                color: AppColors.gradientStart.withOpacity(0.3),
+                color: AppColors.gradientStart.withValues(alpha: 0.3),
                 width: 1.5,
               )
             : null,
@@ -402,7 +389,7 @@ class _CourseCard extends StatelessWidget {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: gradeColor.withOpacity(0.1),
+                      color: gradeColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
@@ -410,7 +397,7 @@ class _CourseCard extends StatelessWidget {
                       children: [
                         Text(
                           GradeUtils.formatGrade(average),
-                          style: GoogleFonts.poppins(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                             color: gradeColor,
@@ -418,7 +405,7 @@ class _CourseCard extends StatelessWidget {
                         ),
                         Text(
                           strings.avg,
-                          style: GoogleFonts.poppins(
+                          style: TextStyle(
                             fontSize: 10,
                             color: gradeColor,
                           ),
@@ -434,7 +421,7 @@ class _CourseCard extends StatelessWidget {
                       children: [
                         Text(
                           course.displayName,
-                          style: GoogleFonts.poppins(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: textPrimaryColor,
@@ -489,11 +476,8 @@ class _CourseCard extends StatelessWidget {
   Widget _buildChip(IconData icon, String label) {
     return Builder(
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-        final textSecondaryColor = isDark
-            ? AppColors.textSecondaryDark
-            : AppColors.textSecondary;
+        final surfaceColor = context.surfaceColor;
+        final textSecondaryColor = context.textSecondaryColor;
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -508,7 +492,7 @@ class _CourseCard extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 label,
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: 11,
                   color: textSecondaryColor,
                 ),
@@ -542,20 +526,15 @@ class _CourseCard extends StatelessWidget {
 
 class _ExamRow extends StatelessWidget {
   final Epreuve exam;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _ExamRow({required this.exam, required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final surfaceColor = context.surfaceColor;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     final grade = exam.grade;
     final gradeColor = exam.estAbsent
@@ -577,7 +556,7 @@ class _ExamRow extends StatelessWidget {
               children: [
                 Text(
                   exam.libelle ?? strings.unnamedExam,
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     color: textPrimaryColor,
@@ -589,7 +568,7 @@ class _ExamRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     exam.intervenants!,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 12,
                       color: textSecondaryColor,
                     ),
@@ -604,12 +583,12 @@ class _ExamRow extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: gradeColor.withOpacity(0.1),
+              color: gradeColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               exam.displayGrade,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: gradeColor,

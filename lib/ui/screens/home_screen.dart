@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
 import '../../providers/settings_provider.dart';
 import 'planning_screen.dart';
 import 'grades_screen.dart';
@@ -72,8 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBottomNavigationBar(List<_NavItem> navItems) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
+    final surfaceColor = context.surfaceColor;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final bottomMargin = bottomPadding > 0 ? bottomPadding + 8 : 24.0;
 
@@ -85,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -103,10 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildNavItem(int index, _NavItem item) {
     final isSelected = _currentIndex == index;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return GestureDetector(
       onTap: () => setState(() => _currentIndex = index),
@@ -139,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 8),
               Text(
                 item.label,
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,

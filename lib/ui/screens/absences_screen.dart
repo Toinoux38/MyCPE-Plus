@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
+import '../../core/utils/date_utils.dart' as date_utils;
 import '../../data/models/absences_response.dart';
 import '../../providers/absences_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../widgets/state_views.dart';
+import '../widgets/sync_status_footer.dart';
 
 class AbsencesScreen extends StatefulWidget {
   const AbsencesScreen({super.key});
@@ -33,10 +36,7 @@ class _AbsencesScreenState extends State<AbsencesScreen> {
   Widget build(BuildContext context) {
     return Consumer2<AbsencesProvider, SettingsProvider>(
       builder: (context, absences, settings, _) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final backgroundColor = isDark
-            ? AppColors.backgroundDark
-            : AppColors.background;
+        final backgroundColor = context.backgroundColor;
 
         return Container(
           color: backgroundColor,
@@ -61,16 +61,13 @@ class _AbsencesScreenState extends State<AbsencesScreen> {
 // =============================================================================
 
 class _AbsencesHeader extends StatelessWidget {
-  final dynamic strings;
+  final AppStrings strings;
 
   const _AbsencesHeader({required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
+    final textPrimaryColor = context.textPrimaryColor;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
@@ -96,7 +93,7 @@ class _AbsencesHeader extends StatelessWidget {
           const SizedBox(width: 16),
           Text(
             strings.absences,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w600,
               color: textPrimaryColor,
@@ -120,8 +117,7 @@ class _MainCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
+    final surfaceColor = context.surfaceColor;
     // Account for floating navigation bar
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final navBarSpace = 56 + (bottomPadding > 0 ? bottomPadding : 16);
@@ -133,7 +129,7 @@ class _MainCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -148,6 +144,12 @@ class _MainCard extends StatelessWidget {
             const Divider(height: 1, color: AppColors.divider),
             // Content
             Expanded(child: _buildContent()),
+            SyncStatusFooter(
+              isSyncing: absences.isSyncing,
+              isOffline: absences.isOffline,
+              lastSync: absences.lastUpdated,
+              strings: settings.strings,
+            ),
           ],
         ),
       ),
@@ -184,7 +186,7 @@ class _MainCard extends StatelessWidget {
 
 class _StatsBar extends StatelessWidget {
   final AbsencesProvider absences;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _StatsBar({required this.absences, required this.strings});
 
@@ -195,8 +197,7 @@ class _StatsBar extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final dividerColor = context.dividerColor;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -267,13 +268,8 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Expanded(
       child: Column(
@@ -282,7 +278,7 @@ class _StatItem extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             value,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w600,
               color: textPrimaryColor,
@@ -291,7 +287,7 @@ class _StatItem extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             label,
-            style: GoogleFonts.poppins(fontSize: 11, color: textSecondaryColor),
+            style: TextStyle(fontSize: 11, color: textSecondaryColor),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -315,17 +311,14 @@ class _DurationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Expanded(
       child: Column(
         children: [
           Text(
             duration,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: color,
@@ -334,7 +327,7 @@ class _DurationItem extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             label,
-            style: GoogleFonts.poppins(fontSize: 11, color: textSecondaryColor),
+            style: TextStyle(fontSize: 11, color: textSecondaryColor),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -356,13 +349,8 @@ class _EmptyAbsences extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final surfaceVariantColor = context.surfaceVariantColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Center(
       child: Column(
@@ -386,7 +374,7 @@ class _EmptyAbsences extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 48),
             child: Text(
               message,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 16,
                 color: textSecondaryColor,
               ),
@@ -405,7 +393,7 @@ class _EmptyAbsences extends StatelessWidget {
 
 class _AbsencesList extends StatelessWidget {
   final AbsencesProvider absences;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _AbsencesList({required this.absences, required this.strings});
 
@@ -433,30 +421,26 @@ class _AbsencesList extends StatelessWidget {
 
 class _AbsenceCard extends StatelessWidget {
   final Absence absence;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _AbsenceCard({required this.absence, required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final surfaceColor = context.surfaceColor;
+    final surfaceVariantColor = context.surfaceVariantColor;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
+    final dividerColor = context.dividerColor;
 
     final isExcused = absence.motifAbsence.estExcuser;
     final borderColor = isExcused
-        ? Colors.green.withOpacity(0.3)
-        : AppColors.error.withOpacity(0.3);
+        ? Colors.green.withValues(alpha: 0.3)
+        : AppColors.error.withValues(alpha: 0.3);
     final iconColor = isExcused ? Colors.green : AppColors.error;
+    final locale = date_utils.DateUtils.localeTag(
+      context.watch<SettingsProvider>().locale.code,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -482,8 +466,8 @@ class _AbsenceCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        _formatDate(absence.evenement.dateDebut),
-                        style: GoogleFonts.poppins(
+                        _formatDate(absence.evenement.dateDebut, locale),
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                           color: textSecondaryColor,
@@ -498,7 +482,7 @@ class _AbsenceCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.1),
+                    color: iconColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -512,7 +496,7 @@ class _AbsenceCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(
                         isExcused ? strings.excused : strings.notExcused,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                           color: iconColor,
@@ -527,7 +511,7 @@ class _AbsenceCard extends StatelessWidget {
             // Course title
             Text(
               absence.evenement.libelleConstruit,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: textPrimaryColor,
@@ -543,7 +527,7 @@ class _AbsenceCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       absence.evenement.intervenants,
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
                         fontSize: 13,
                         color: textSecondaryColor,
                       ),
@@ -565,7 +549,7 @@ class _AbsenceCard extends StatelessWidget {
                     absence.evenement.dateDebut,
                     absence.evenement.dateFin,
                   ),
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 13,
                     color: textSecondaryColor,
                   ),
@@ -582,7 +566,7 @@ class _AbsenceCard extends StatelessWidget {
                   ),
                   child: Text(
                     absence.duree,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: textPrimaryColor,
@@ -602,7 +586,7 @@ class _AbsenceCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     absence.motifAbsence.libelle,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 13,
                       color: textSecondaryColor,
                       fontStyle: FontStyle.italic,
@@ -619,24 +603,17 @@ class _AbsenceCard extends StatelessWidget {
     );
   }
 
-  String _formatDate(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      return DateFormat('EEE, MMM d, y').format(date);
-    } catch (e) {
-      return dateStr;
-    }
+  String _formatDate(String dateStr, String locale) {
+    final date = date_utils.DateUtils.parseApiDate(dateStr);
+    if (date == null) return dateStr;
+    return DateFormat('EEE d MMM y', locale).format(date);
   }
 
   String _formatTimeRange(String startStr, String endStr) {
-    try {
-      final start = DateTime.parse(startStr);
-      final end = DateTime.parse(endStr);
-      final startTime = DateFormat('HH:mm').format(start);
-      final endTime = DateFormat('HH:mm').format(end);
-      return '$startTime - $endTime';
-    } catch (e) {
-      return '';
-    }
+    final start = date_utils.DateUtils.parseApiDate(startStr);
+    final end = date_utils.DateUtils.parseApiDate(endStr);
+    if (start == null || end == null) return '';
+    return '${date_utils.DateUtils.formatTime(start)} - '
+        '${date_utils.DateUtils.formatTime(end)}';
   }
 }

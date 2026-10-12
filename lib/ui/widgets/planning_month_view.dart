@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
 import '../../core/utils/date_utils.dart' as date_utils;
 import '../../providers/planning_provider.dart';
 
 /// Month calendar view showing a gradient dot for days with courses.
 class PlanningMonthView extends StatefulWidget {
   final PlanningProvider planning;
-  final dynamic strings;
+  final AppStrings strings;
+  final String locale;
 
   const PlanningMonthView({
     super.key,
     required this.planning,
     required this.strings,
+    required this.locale,
   });
 
   @override
@@ -23,38 +26,24 @@ class PlanningMonthView extends StatefulWidget {
 
 class _PlanningMonthViewState extends State<PlanningMonthView> {
   double _dragDistance = 0;
-  bool _isProcessingSwipe = false;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     final month = widget.planning.currentMonth;
-    final monthLabel = date_utils.DateUtils.formatMonthYear(month);
+    final monthLabel = date_utils.DateUtils.formatMonthYear(
+      month,
+      locale: widget.locale,
+    );
 
     return GestureDetector(
-      onHorizontalDragStart: (_) {
-        _dragDistance = 0;
-        _isProcessingSwipe = false;
-      },
-      onHorizontalDragUpdate: (details) {
-        if (_isProcessingSwipe) return;
-        _dragDistance += details.delta.dx;
-      },
+      onHorizontalDragStart: (_) => _dragDistance = 0,
+      onHorizontalDragUpdate: (details) => _dragDistance += details.delta.dx,
       onHorizontalDragEnd: (details) {
-        if (_isProcessingSwipe) return;
         final velocity = details.primaryVelocity ?? 0;
-        final hasSignificantVelocity = velocity.abs() > 500;
-        final hasSignificantDistance = _dragDistance.abs() > 80;
-
-        if (hasSignificantVelocity || hasSignificantDistance) {
-          _isProcessingSwipe = true;
+        if (velocity.abs() > 500 || _dragDistance.abs() > 80) {
           if (_dragDistance > 0) {
             widget.planning.previousMonth();
           } else {
@@ -84,7 +73,7 @@ class _PlanningMonthViewState extends State<PlanningMonthView> {
                 ),
                 Text(
                   monthLabel,
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: textPrimaryColor,
@@ -95,7 +84,7 @@ class _PlanningMonthViewState extends State<PlanningMonthView> {
                   child: Padding(
                     padding: const EdgeInsets.all(8),
                     child: Icon(
-                      Iconsax.arrow_right,
+                      Iconsax.arrow_right_3,
                       size: 20,
                       color: textSecondaryColor,
                     ),
@@ -110,7 +99,7 @@ class _PlanningMonthViewState extends State<PlanningMonthView> {
           // Calendar grid with pull-to-refresh
           Expanded(
             child: RefreshIndicator(
-              onRefresh: widget.planning.refreshMonthEvents,
+              onRefresh: widget.planning.refresh,
               color: AppColors.gradientStart,
               child: _MonthGrid(month: month, planning: widget.planning),
             ),
@@ -122,16 +111,13 @@ class _PlanningMonthViewState extends State<PlanningMonthView> {
 }
 
 class _WeekdayHeaders extends StatelessWidget {
-  final dynamic strings;
+  final AppStrings strings;
 
   const _WeekdayHeaders({required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textSecondaryColor = context.textSecondaryColor;
 
     // Mon-Sun single letters matching existing day selector style
     final dayLetters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -146,7 +132,7 @@ class _WeekdayHeaders extends StatelessWidget {
             child: Center(
               child: Text(
                 letter,
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: textSecondaryColor,
@@ -201,16 +187,17 @@ class _MonthGrid extends StatelessWidget {
                 date,
                 DateTime.now(),
               );
-              final isWeekend = date.weekday == 6 || date.weekday == 7;
+              final isWeekend = date_utils.DateUtils.isWeekend(date);
 
               return _MonthDayCell(
                 dayNumber: dayNumber,
                 hasCourses: hasCourses,
                 isToday: isToday,
                 isWeekend: isWeekend,
-                onTap: isWeekend
+                // Weekend days open only when they have courses.
+                onTap: isWeekend && !hasCourses
                     ? null
-                    : () => planning.selectDateFromCalendar(date),
+                    : () => planning.openDay(date),
               );
             }),
           ),
@@ -237,13 +224,8 @@ class _MonthDayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return GestureDetector(
       onTap: onTap,
@@ -273,13 +255,13 @@ class _MonthDayCell extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 dayNumber.toString(),
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: isToday ? FontWeight.w600 : FontWeight.w500,
                   color: isToday
                       ? Colors.white
                       : isWeekend
-                      ? textSecondaryColor.withOpacity(0.4)
+                      ? textSecondaryColor.withValues(alpha: 0.4)
                       : textPrimaryColor,
                 ),
               ),

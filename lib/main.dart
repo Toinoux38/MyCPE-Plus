@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'data/services/api_client.dart';
 import 'data/services/auth_service.dart';
 import 'data/services/grades_service.dart';
+import 'data/services/home_widget_service.dart';
 import 'data/services/planning_service.dart';
 import 'data/services/absences_service.dart';
 import 'data/services/token_storage.dart';
@@ -15,9 +17,16 @@ import 'providers/planning_provider.dart';
 import 'providers/absences_provider.dart';
 import 'providers/settings_provider.dart';
 import 'ui/app_shell.dart';
+import 'ui/screens/splash_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Day/month names for every locale (French dates in the planning).
+  await initializeDateFormatting();
+
+  // Initialize home screen widget support
+  HomeWidgetService.initialize();
 
   // Set preferred orientations
   SystemChrome.setPreferredOrientations([
@@ -77,6 +86,7 @@ class _StudentAppState extends State<StudentApp> {
 
   @override
   void dispose() {
+    _authService.dispose();
     _apiClient.dispose();
     super.dispose();
   }
@@ -101,46 +111,49 @@ class _StudentAppState extends State<StudentApp> {
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
-          // Wait for settings to be initialized
-          if (!settings.isInitialized) {
-            return const MaterialApp(
-              debugShowCheckedModeBanner: false,
-              home: Scaffold(body: Center(child: CircularProgressIndicator())),
-            );
-          }
-
-          // Determine if dark mode is active
-          final isDark =
-              settings.themeMode == ThemeMode.dark ||
-              (settings.themeMode == ThemeMode.system &&
-                  WidgetsBinding
-                          .instance
-                          .platformDispatcher
-                          .platformBrightness ==
-                      Brightness.dark);
-
-          return AnnotatedRegion<SystemUiOverlayStyle>(
-            value: SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: isDark
+          return MaterialApp(
+            title: settings.strings.appName,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
+            // Follow the system until the saved preference is read.
+            themeMode: settings.isInitialized
+                ? settings.themeMode
+                : ThemeMode.system,
+            // Below MaterialApp, so it sees the theme actually displayed,
+            // including system light/dark changes while the app is open.
+            builder: (context, child) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              final iconBrightness = isDark
                   ? Brightness.light
-                  : Brightness.dark,
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarIconBrightness: isDark
-                  ? Brightness.light
-                  : Brightness.dark,
-            ),
-            child: MaterialApp(
-              title: settings.strings.appName,
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.light,
-              darkTheme: AppTheme.dark,
-              themeMode: settings.themeMode,
-              home: const AppShell(),
-            ),
+                  : Brightness.dark;
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: SystemUiOverlayStyle(
+                  statusBarColor: Colors.transparent,
+                  statusBarIconBrightness: iconBrightness,
+                  systemNavigationBarColor: Colors.transparent,
+                  systemNavigationBarIconBrightness: iconBrightness,
+                ),
+                child: child!,
+              );
+            },
+            home: const _Root(),
           );
         },
       ),
     );
+  }
+}
+
+/// Splash until the settings are read, then the app. Same splash as the one
+/// AppShell shows while restoring the session, so startup is seamless.
+class _Root extends StatelessWidget {
+  const _Root();
+
+  @override
+  Widget build(BuildContext context) {
+    return context.watch<SettingsProvider>().isInitialized
+        ? const AppShell()
+        : const SplashScreen();
   }
 }

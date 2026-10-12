@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/localization/app_locale.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 
@@ -19,10 +20,7 @@ class SettingsScreen extends StatelessWidget {
     return Consumer<SettingsProvider>(
       builder: (context, settings, _) {
         final strings = settings.strings;
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final backgroundColor = isDark
-            ? AppColors.backgroundDark
-            : AppColors.background;
+        final backgroundColor = context.backgroundColor;
 
         return Container(
           color: backgroundColor,
@@ -45,19 +43,14 @@ class SettingsScreen extends StatelessWidget {
 // =============================================================================
 
 class _SettingsHeader extends StatelessWidget {
-  final dynamic strings;
+  final AppStrings strings;
 
   const _SettingsHeader({required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
@@ -82,7 +75,7 @@ class _SettingsHeader extends StatelessWidget {
             children: [
               Text(
                 strings.settings,
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w600,
                   color: textPrimaryColor,
@@ -90,7 +83,7 @@ class _SettingsHeader extends StatelessWidget {
               ),
               Text(
                 strings.appName,
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: 14,
                   color: textSecondaryColor,
                 ),
@@ -115,8 +108,7 @@ class _MainCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = settings.strings;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
+    final surfaceColor = context.surfaceColor;
     // Account for floating navigation bar
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final navBarSpace = 56 + (bottomPadding > 0 ? bottomPadding : 16);
@@ -128,7 +120,7 @@ class _MainCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -197,7 +189,7 @@ class _SectionHeader extends StatelessWidget {
           ).createShader(bounds),
           child: Text(
             title,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: Colors.white,
@@ -220,17 +212,10 @@ class _LanguageSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final surfaceVariantColor = context.surfaceVariantColor;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
+    final dividerColor = context.dividerColor;
 
     return Container(
       decoration: BoxDecoration(
@@ -267,7 +252,7 @@ class _LanguageSelector extends StatelessWidget {
                           children: [
                             Text(
                               locale.displayName,
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: isSelected
                                     ? FontWeight.w600
@@ -277,7 +262,7 @@ class _LanguageSelector extends StatelessWidget {
                             ),
                             Text(
                               _getLanguageNativeName(locale),
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
                                 fontSize: 12,
                                 color: textSecondaryColor,
                               ),
@@ -303,7 +288,7 @@ class _LanguageSelector extends StatelessWidget {
                           border: isSelected
                               ? null
                               : Border.all(
-                                  color: textSecondaryColor.withOpacity(0.3),
+                                  color: textSecondaryColor.withValues(alpha: 0.3),
                                   width: 2,
                                 ),
                         ),
@@ -364,18 +349,11 @@ class _ThemeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = settings.strings;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final surfaceVariantColor = context.surfaceVariantColor;
+    final surfaceColor = context.surfaceColor;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
+    final dividerColor = context.dividerColor;
 
     final themes = [
       _ThemeOption(ThemeMode.system, strings.themeSystem, Iconsax.mobile),
@@ -412,7 +390,7 @@ class _ThemeSelector extends StatelessWidget {
                         height: 40,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? AppColors.gradientStart.withOpacity(0.1)
+                              ? AppColors.gradientStart.withValues(alpha: 0.1)
                               : surfaceColor,
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -428,7 +406,7 @@ class _ThemeSelector extends StatelessWidget {
                       Expanded(
                         child: Text(
                           themeOption.label,
-                          style: GoogleFonts.poppins(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: isSelected
                                 ? FontWeight.w600
@@ -455,7 +433,7 @@ class _ThemeSelector extends StatelessWidget {
                           border: isSelected
                               ? null
                               : Border.all(
-                                  color: textSecondaryColor.withOpacity(0.3),
+                                  color: textSecondaryColor.withValues(alpha: 0.3),
                                   width: 2,
                                 ),
                         ),
@@ -530,14 +508,9 @@ class _AboutCardState extends State<_AboutCard> {
   @override
   Widget build(BuildContext context) {
     final settings = widget.settings;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final surfaceVariantColor = context.surfaceVariantColor;
+    final textPrimaryColor = context.textPrimaryColor;
+    final dividerColor = context.dividerColor;
 
     final versionText = _version.isNotEmpty
         ? '${settings.strings.version} $_version+$_buildNumber'
@@ -583,7 +556,7 @@ class _AboutCardState extends State<_AboutCard> {
                   children: [
                     Text(
                       settings.strings.appName,
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                         color: textPrimaryColor,
@@ -608,7 +581,7 @@ class _AboutCardState extends State<_AboutCard> {
                       ),
                       child: Text(
                         versionText,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: Colors.white,
@@ -646,20 +619,13 @@ class _StudioRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Row(
       children: [
         Text(
           'Studio',
-          style: GoogleFonts.poppins(fontSize: 14, color: textSecondaryColor),
+          style: TextStyle(fontSize: 14, color: textSecondaryColor),
         ),
         const Spacer(),
         SvgPicture.asset(
@@ -685,14 +651,9 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final surfaceColor = context.surfaceColor;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Row(
       children: [
@@ -708,12 +669,12 @@ class _InfoRow extends StatelessWidget {
         const SizedBox(width: 12),
         Text(
           label,
-          style: GoogleFonts.poppins(fontSize: 14, color: textSecondaryColor),
+          style: TextStyle(fontSize: 14, color: textSecondaryColor),
         ),
         const Spacer(),
         Text(
           value,
-          style: GoogleFonts.poppins(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
             color: textPrimaryColor,
@@ -741,9 +702,9 @@ class _LogoutButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.error.withOpacity(0.1),
+          color: AppColors.error.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.error.withOpacity(0.3), width: 1),
+          border: Border.all(color: AppColors.error.withValues(alpha: 0.3), width: 1),
         ),
         child: Row(
           children: [
@@ -751,7 +712,7 @@ class _LogoutButton extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: AppColors.error.withOpacity(0.1),
+                color: AppColors.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
@@ -767,7 +728,7 @@ class _LogoutButton extends StatelessWidget {
                 children: [
                   Text(
                     settings.strings.signOut,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: AppColors.error,
@@ -776,9 +737,9 @@ class _LogoutButton extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     settings.strings.signOutConfirmMessage,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Theme.of(context).brightness == Brightness.dark
+                      color: context.isDark
                           ? AppColors.textSecondaryDark
                           : AppColors.textSecondary,
                     ),
@@ -795,13 +756,8 @@ class _LogoutButton extends StatelessWidget {
 
   Future<void> _showLogoutDialog(BuildContext context) async {
     final strings = settings.strings;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     final result = await showDialog<bool>(
       context: context,
@@ -809,7 +765,7 @@ class _LogoutButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           strings.signOutConfirmTitle,
-          style: GoogleFonts.poppins(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
             color: textPrimaryColor,
@@ -817,14 +773,14 @@ class _LogoutButton extends StatelessWidget {
         ),
         content: Text(
           strings.signOutConfirmMessage,
-          style: GoogleFonts.poppins(fontSize: 14, color: textSecondaryColor),
+          style: TextStyle(fontSize: 14, color: textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(
               strings.cancel,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: textSecondaryColor,
@@ -841,7 +797,7 @@ class _LogoutButton extends StatelessWidget {
             ),
             child: Text(
               strings.signOut,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Colors.white,

@@ -18,6 +18,21 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+// Some plugins (e.g. home_widget) still target JVM 1.8, which fails with Kotlin 2.2+ / AGP 9.
+// Force every subproject to compile for JVM 17, like the app module.
+subprojects {
+    if (!state.executed) {
+        afterEvaluate {
+            extensions.findByType<com.android.build.gradle.BaseExtension>()?.compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
+            }
+        }
+    }
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart' as date_utils;
 import '../../data/models/planning_event.dart';
 import '../../providers/planning_provider.dart';
@@ -11,8 +13,9 @@ import '../../providers/settings_provider.dart';
 import '../widgets/planning_month_view.dart';
 import '../widgets/planning_week_view.dart';
 import '../widgets/state_views.dart';
+import '../widgets/sync_status_footer.dart';
 
-/// Clean, simple planning screen with day-based view
+/// Planning screen: day, week and month views.
 class PlanningScreen extends StatefulWidget {
   const PlanningScreen({super.key});
 
@@ -21,125 +24,26 @@ class PlanningScreen extends StatefulWidget {
 }
 
 class _PlanningScreenState extends State<PlanningScreen> {
-  late PageController _pageController;
-  bool _isChangingWeek = false;
-
   @override
   void initState() {
     super.initState();
-    _initPageController();
-    _loadInitialData();
-  }
-
-  void _initPageController() {
-    final provider = context.read<PlanningProvider>();
-    _pageController = PageController(
-      initialPage: provider.selectedDayIndex,
-      viewportFraction: 1.0,
-    );
-  }
-
-  void _loadInitialData() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = context.read<PlanningProvider>();
-      if (provider.state == PlanningState.initial) {
-        // Use cache-first initialization
-        provider.initializeWithCache();
-      }
+      if (mounted) context.read<PlanningProvider>().initialize();
     });
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _onPageChanged(int index) {
-    if (_isChangingWeek) return;
-
-    final provider = context.read<PlanningProvider>();
-
-    if (index >= 0 && index <= 4) {
-      provider.selectDay(index);
-    }
-  }
-
-  Future<void> _goToNextWeek() async {
-    if (_isChangingWeek) return;
-
-    setState(() => _isChangingWeek = true);
-
-    final provider = context.read<PlanningProvider>();
-    await provider.nextWeek();
-
-    // recreate page controller at monday without animation
-    _pageController.dispose();
-    _pageController = PageController(initialPage: 0);
-
-    if (mounted) {
-      setState(() => _isChangingWeek = false);
-    }
-  }
-
-  Future<void> _goToPreviousWeek() async {
-    if (_isChangingWeek) return;
-
-    setState(() => _isChangingWeek = true);
-
-    final provider = context.read<PlanningProvider>();
-    await provider.previousWeek();
-
-    // recreate page controller at friday without animation
-    _pageController.dispose();
-    _pageController = PageController(initialPage: 4);
-
-    if (mounted) {
-      setState(() => _isChangingWeek = false);
-    }
-  }
-
-  void _onDayTapped(int dayIndex) {
-    if (_isChangingWeek) return;
-    if (dayIndex < 0 || dayIndex > 4) return;
-
-    final provider = context.read<PlanningProvider>();
-    provider.selectDay(dayIndex);
-
-    if (_pageController.hasClients) {
-      _pageController.animateToPage(
-        dayIndex,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOutCubic,
-      );
-    }
-  }
-
-  Future<void> _goToToday() async {
-    if (_isChangingWeek) return;
-
-    setState(() => _isChangingWeek = true);
-
-    final provider = context.read<PlanningProvider>();
-    await provider.goToToday();
-
-    // recreate page controller to today
-    _pageController.dispose();
-    _pageController = PageController(initialPage: provider.selectedDayIndex);
-
-    if (mounted) {
-      setState(() => _isChangingWeek = false);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer2<PlanningProvider, SettingsProvider>(
       builder: (context, planning, settings, _) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final backgroundColor = isDark
-            ? AppColors.backgroundDark
-            : AppColors.background;
+        final backgroundColor = context.backgroundColor;
+        final locale = date_utils.DateUtils.localeTag(settings.locale.code);
+        final isMonth = planning.viewMode == PlanningViewMode.month;
+        final now = DateTime.now();
+        final showsToday = isMonth
+            ? planning.currentMonth.year == now.year &&
+                  planning.currentMonth.month == now.month
+            : planning.isToday;
 
         return Container(
           color: backgroundColor,
@@ -148,13 +52,13 @@ class _PlanningScreenState extends State<PlanningScreen> {
               children: [
                 _DateHeader(
                   selectedDate: planning.selectedDate,
-                  isToday: planning.isToday,
-                  onTodayTap: _goToToday,
+                  isToday: showsToday,
+                  onTodayTap: planning.goToToday,
                   strings: settings.strings,
                   viewMode: planning.viewMode,
                   currentMonth: planning.currentMonth,
+                  locale: locale,
                 ),
-                // View mode toggle
                 _ViewModeToggle(
                   viewMode: planning.viewMode,
                   onChanged: planning.setViewMode,
@@ -163,21 +67,10 @@ class _PlanningScreenState extends State<PlanningScreen> {
                 Expanded(
                   child: _MainCard(
                     planning: planning,
-                    settings: settings,
-                    pageController: _pageController,
-                    onPageChanged: _onPageChanged,
-                    onDayTapped: _onDayTapped,
-                    onPreviousWeek: _goToPreviousWeek,
-                    onNextWeek: _goToNextWeek,
-                    isChangingWeek: _isChangingWeek,
+                    strings: settings.strings,
+                    locale: locale,
                   ),
                 ),
-                // Sync status indicator below the card
-                if (planning.syncStatus != PlanningSyncStatus.synced)
-                  _SyncStatusIndicator(
-                    syncStatus: planning.syncStatus,
-                    strings: settings.strings,
-                  ),
               ],
             ),
           ),
@@ -195,9 +88,10 @@ class _DateHeader extends StatelessWidget {
   final DateTime selectedDate;
   final bool isToday;
   final VoidCallback onTodayTap;
-  final dynamic strings;
+  final AppStrings strings;
   final PlanningViewMode viewMode;
   final DateTime currentMonth;
+  final String locale;
 
   const _DateHeader({
     required this.selectedDate,
@@ -206,29 +100,23 @@ class _DateHeader extends StatelessWidget {
     required this.strings,
     required this.viewMode,
     required this.currentMonth,
+    required this.locale,
   });
 
   @override
   Widget build(BuildContext context) {
-    // In month view, show month/year as header; in week/day, show selected date
-    final displayDate = viewMode == PlanningViewMode.month
-        ? currentMonth
-        : selectedDate;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
       child: Row(
         children: [
-          // Date display
           if (viewMode == PlanningViewMode.month)
-            _MonthHeaderDisplay(month: currentMonth)
+            _MonthHeaderDisplay(month: currentMonth, locale: locale)
           else
-            _DateDisplay(selectedDate: displayDate),
+            _DateDisplay(selectedDate: selectedDate, locale: locale),
           const Spacer(),
-          // Today button
           _TodayButton(
             label: strings.today,
-            isToday: isToday && viewMode == PlanningViewMode.day,
+            isToday: isToday,
             onTap: onTodayTap,
           ),
         ],
@@ -244,7 +132,7 @@ class _DateHeader extends StatelessWidget {
 class _ViewModeToggle extends StatelessWidget {
   final PlanningViewMode viewMode;
   final ValueChanged<PlanningViewMode> onChanged;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _ViewModeToggle({
     required this.viewMode,
@@ -254,15 +142,15 @@ class _ViewModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = context.isDark;
     final backgroundColor = isDark
         ? AppColors.surfaceVariantDark
-        : AppColors.divider.withOpacity(0.5);
+        : AppColors.divider.withValues(alpha: 0.5);
 
     final modes = [
-      (PlanningViewMode.day, strings.dayView as String),
-      (PlanningViewMode.week, strings.weekView as String),
-      (PlanningViewMode.month, strings.monthView as String),
+      (PlanningViewMode.day, strings.dayView),
+      (PlanningViewMode.week, strings.weekView),
+      (PlanningViewMode.month, strings.monthView),
     ];
 
     final selectedIndex = modes.indexWhere((e) => e.$1 == viewMode);
@@ -303,7 +191,7 @@ class _ViewModeToggle extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.gradientStart.withOpacity(0.3),
+                          color: AppColors.gradientStart.withValues(alpha: 0.3),
                           blurRadius: 4,
                           offset: const Offset(0, 1),
                         ),
@@ -324,14 +212,14 @@ class _ViewModeToggle extends StatelessWidget {
                         child: Center(
                           child: AnimatedDefaultTextStyle(
                             duration: const Duration(milliseconds: 200),
-                            style: GoogleFonts.poppins(
+                            // Replaces (not merges) the default text style.
+                            style: TextStyle(
+                              fontFamily: AppTheme.fontFamily,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: isSelected
                                   ? Colors.white
-                                  : (isDark
-                                        ? AppColors.textSecondaryDark
-                                        : AppColors.textSecondary),
+                                  : (context.textSecondaryColor),
                             ),
                             child: Text(label),
                           ),
@@ -355,24 +243,25 @@ class _ViewModeToggle extends StatelessWidget {
 
 class _MonthHeaderDisplay extends StatelessWidget {
   final DateTime month;
+  final String locale;
 
-  const _MonthHeaderDisplay({required this.month});
+  const _MonthHeaderDisplay({required this.month, required this.locale});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
+    final textPrimaryColor = context.textPrimaryColor;
 
-    final monthName = date_utils.DateUtils.formatMonthYear(month);
+    final monthName = date_utils.DateUtils.formatMonthYear(
+      month,
+      locale: locale,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           monthName,
-          style: GoogleFonts.poppins(
+          style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w600,
             color: textPrimaryColor,
@@ -384,144 +273,33 @@ class _MonthHeaderDisplay extends StatelessWidget {
   }
 }
 
-class _SyncStatusIndicator extends StatelessWidget {
-  final PlanningSyncStatus syncStatus;
-  final dynamic strings;
-
-  const _SyncStatusIndicator({required this.syncStatus, required this.strings});
-
-  @override
-  Widget build(BuildContext context) {
-    String text;
-    IconData icon;
-    Color color;
-
-    switch (syncStatus) {
-      case PlanningSyncStatus.syncing:
-        text = strings.syncing;
-        icon = Iconsax.refresh;
-        color = AppColors.gradientStart;
-        break;
-      case PlanningSyncStatus.cached:
-        text = strings.syncing;
-        icon = Iconsax.refresh;
-        color = AppColors.gradientStart;
-        break;
-      case PlanningSyncStatus.offline:
-        text = strings.offlineMode;
-        icon = Iconsax.wifi_square;
-        color = AppColors.warning;
-        break;
-      case PlanningSyncStatus.synced:
-        return const SizedBox.shrink();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (syncStatus == PlanningSyncStatus.syncing ||
-              syncStatus == PlanningSyncStatus.cached)
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(color),
-              ),
-            )
-          else
-            Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LastUpdatedFooter extends StatelessWidget {
-  final DateTime lastSyncTime;
-  final dynamic strings;
-
-  const _LastUpdatedFooter({required this.lastSyncTime, required this.strings});
-
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final diff = now.difference(time);
-
-    if (diff.inMinutes < 1) {
-      return 'just now';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}min ago';
-    } else if (diff.inHours < 24 && now.day == time.day) {
-      final hour = time.hour.toString().padLeft(2, '0');
-      final minute = time.minute.toString().padLeft(2, '0');
-      return '$hour:$minute';
-    } else {
-      final day = time.day.toString().padLeft(2, '0');
-      final month = time.month.toString().padLeft(2, '0');
-      final hour = time.hour.toString().padLeft(2, '0');
-      final minute = time.minute.toString().padLeft(2, '0');
-      return '$day/$month $hour:$minute';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        '${strings.lastUpdated}: ${_formatTime(lastSyncTime)}',
-        style: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: FontWeight.w400,
-          color: textSecondaryColor.withOpacity(0.5),
-        ),
-      ),
-    );
-  }
-}
-
 class _DateDisplay extends StatelessWidget {
   final DateTime selectedDate;
+  final String locale;
 
-  const _DateDisplay({required this.selectedDate});
+  const _DateDisplay({required this.selectedDate, required this.locale});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     final dayNumber = selectedDate.day.toString();
-    final dayName = date_utils.DateUtils.formatDayName(selectedDate);
-    final monthYear = date_utils.DateUtils.formatMonthYear(selectedDate);
+    final dayName = date_utils.DateUtils.formatDayName(
+      selectedDate,
+      locale: locale,
+    );
+    final monthYear = date_utils.DateUtils.formatMonthYear(
+      selectedDate,
+      locale: locale,
+    );
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           dayNumber,
-          style: GoogleFonts.poppins(
+          style: TextStyle(
             fontSize: 48,
             fontWeight: FontWeight.w600,
             color: textPrimaryColor,
@@ -535,7 +313,7 @@ class _DateDisplay extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               dayName,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
                 color: textSecondaryColor,
@@ -543,7 +321,7 @@ class _DateDisplay extends StatelessWidget {
             ),
             Text(
               monthYear,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
                 color: textSecondaryColor,
@@ -602,7 +380,7 @@ class _TodayButton extends StatelessWidget {
                   ).createShader(bounds),
             child: Text(
               label,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Colors.white,
@@ -621,30 +399,19 @@ class _TodayButton extends StatelessWidget {
 
 class _MainCard extends StatelessWidget {
   final PlanningProvider planning;
-  final SettingsProvider settings;
-  final PageController pageController;
-  final ValueChanged<int> onPageChanged;
-  final ValueChanged<int> onDayTapped;
-  final VoidCallback onPreviousWeek;
-  final VoidCallback onNextWeek;
-  final bool isChangingWeek;
+  final AppStrings strings;
+  final String locale;
 
   const _MainCard({
     required this.planning,
-    required this.settings,
-    required this.pageController,
-    required this.onPageChanged,
-    required this.onDayTapped,
-    required this.onPreviousWeek,
-    required this.onNextWeek,
-    required this.isChangingWeek,
+    required this.strings,
+    required this.locale,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
+    final surfaceColor = context.surfaceColor;
+    final dividerColor = context.dividerColor;
     // Account for floating navigation bar
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final navBarSpace = 56 + (bottomPadding > 0 ? bottomPadding : 16);
@@ -656,7 +423,7 @@ class _MainCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -666,25 +433,17 @@ class _MainCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         child: Column(
           children: [
-            // Day selector — only show in day view
             if (planning.viewMode == PlanningViewMode.day) ...[
-              _DaySelector(
-                currentMonday: planning.currentMonday,
-                selectedDayIndex: planning.selectedDayIndex,
-                onDayTapped: onDayTapped,
-                onPreviousWeek: onPreviousWeek,
-                onNextWeek: onNextWeek,
-              ),
+              _DaySelector(planning: planning),
               Divider(height: 1, color: dividerColor),
             ],
-            // Content
             Expanded(child: _buildContent()),
-            // Last updated footer
-            if (planning.lastSyncTime != null)
-              _LastUpdatedFooter(
-                lastSyncTime: planning.lastSyncTime!,
-                strings: settings.strings,
-              ),
+            SyncStatusFooter(
+              isSyncing: planning.isSyncing,
+              isOffline: planning.isOffline,
+              lastSync: planning.lastSyncTime,
+              strings: strings,
+            ),
           ],
         ),
       ),
@@ -692,57 +451,27 @@ class _MainCard extends StatelessWidget {
   }
 
   Widget _buildContent() {
-    final strings = settings.strings;
-
-    // Month and week views handle their own loading/empty states
-    if (planning.viewMode == PlanningViewMode.month) {
-      return PlanningMonthView(planning: planning, strings: strings);
+    if (!planning.isReady) {
+      return LoadingIndicator(message: strings.loadingSchedule);
     }
-
-    if (planning.viewMode == PlanningViewMode.week) {
-      if (planning.state == PlanningState.initial ||
-          planning.state == PlanningState.loading) {
-        return LoadingIndicator(message: strings.loadingSchedule);
-      }
-      if (planning.state == PlanningState.error) {
-        return ErrorView(
-          message: planning.errorMessage ?? strings.noScheduleAvailable,
-          onRetry: planning.refresh,
-          retryLabel: strings.retry,
-        );
-      }
-      return PlanningWeekView(
-        planning: planning,
-        strings: strings,
-        onPreviousWeek: onPreviousWeek,
-        onNextWeek: onNextWeek,
-      );
-    }
-
-    // Day view (default)
-    switch (planning.state) {
-      case PlanningState.initial:
-      case PlanningState.loading:
-        return LoadingIndicator(message: strings.loadingSchedule);
-
-      case PlanningState.error:
-        return ErrorView(
-          message: planning.errorMessage ?? strings.noScheduleAvailable,
-          onRetry: planning.refresh,
-          retryLabel: strings.retry,
-        );
-
-      case PlanningState.loaded:
-        if (isChangingWeek) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return _CoursesView(
+    switch (planning.viewMode) {
+      case PlanningViewMode.month:
+        return PlanningMonthView(
           planning: planning,
-          pageController: pageController,
-          onPageChanged: onPageChanged,
-          onNextWeek: onNextWeek,
-          onPreviousWeek: onPreviousWeek,
-          strings: settings.strings,
+          strings: strings,
+          locale: locale,
+        );
+      case PlanningViewMode.week:
+        return PlanningWeekView(
+          planning: planning,
+          strings: strings,
+          locale: locale,
+        );
+      case PlanningViewMode.day:
+        return _DayPager(
+          key: ValueKey(planning.currentMonday),
+          planning: planning,
+          strings: strings,
         );
     }
   }
@@ -753,83 +482,63 @@ class _MainCard extends StatelessWidget {
 // =============================================================================
 
 class _DaySelector extends StatefulWidget {
-  final DateTime currentMonday;
-  final int selectedDayIndex;
-  final ValueChanged<int> onDayTapped;
-  final VoidCallback onPreviousWeek;
-  final VoidCallback onNextWeek;
+  final PlanningProvider planning;
 
-  const _DaySelector({
-    required this.currentMonday,
-    required this.selectedDayIndex,
-    required this.onDayTapped,
-    required this.onPreviousWeek,
-    required this.onNextWeek,
-  });
+  const _DaySelector({required this.planning});
 
   @override
   State<_DaySelector> createState() => _DaySelectorState();
 }
 
 class _DaySelectorState extends State<_DaySelector> {
+  static const _letters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
   double _dragDistance = 0;
-  bool _isProcessingSwipe = false;
+
+  void _onDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final isSwipe =
+        (velocity.abs() > 500 && _dragDistance.abs() > 100) ||
+        _dragDistance.abs() > 150;
+    if (isSwipe) {
+      if (_dragDistance > 0) {
+        widget.planning.previousWeek();
+      } else {
+        widget.planning.nextWeek();
+      }
+    }
+    _dragDistance = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final weekDays = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-    final sunday = widget.currentMonday.subtract(const Duration(days: 1));
+    final planning = widget.planning;
+    final monday = planning.currentMonday;
+    final now = DateTime.now();
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onHorizontalDragStart: (_) {
-        _dragDistance = 0;
-        _isProcessingSwipe = false;
-      },
-      onHorizontalDragUpdate: (details) {
-        if (_isProcessingSwipe) return;
-        _dragDistance += details.delta.dx;
-      },
-      onHorizontalDragEnd: (details) {
-        if (_isProcessingSwipe) return;
-
-        final velocity = details.primaryVelocity ?? 0;
-
-        final hasSignificantVelocity = velocity.abs() > 500;
-        final hasSignificantDistance = _dragDistance.abs() > 100;
-
-        if ((hasSignificantVelocity && hasSignificantDistance) ||
-            _dragDistance.abs() > 150) {
-          _isProcessingSwipe = true;
-          if (_dragDistance > 0) {
-            widget.onPreviousWeek();
-          } else {
-            widget.onNextWeek();
-          }
-        }
-        _dragDistance = 0;
-      },
+      onHorizontalDragStart: (_) => _dragDistance = 0,
+      onHorizontalDragUpdate: (details) => _dragDistance += details.delta.dx,
+      onHorizontalDragEnd: _onDragEnd,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: List.generate(7, (index) {
-            final date = sunday.add(Duration(days: index));
-            final isWeekday = index >= 1 && index <= 5;
-            final dayIndex = index - 1;
-            final isSelected = isWeekday && dayIndex == widget.selectedDayIndex;
-            final isToday = date_utils.DateUtils.isSameDay(
-              date,
-              DateTime.now(),
-            );
+            final date = date_utils.DateUtils.addDays(monday, index);
+            // Weekend days are selectable only when they have courses.
+            final isEnabled = index < 5 || planning.dayHasCourses(date);
 
             return _DayItem(
-              letter: weekDays[index],
+              letter: _letters[index],
               number: date.day,
-              isSelected: isSelected,
-              isToday: isToday,
-              isEnabled: isWeekday,
-              onTap: isWeekday ? () => widget.onDayTapped(dayIndex) : null,
+              isSelected: date_utils.DateUtils.isSameDay(
+                date,
+                planning.selectedDate,
+              ),
+              isToday: date_utils.DateUtils.isSameDay(date, now),
+              isEnabled: isEnabled,
+              onTap: isEnabled ? () => planning.selectDate(date) : null,
             );
           }),
         ),
@@ -857,22 +566,17 @@ class _DayItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     final numberColor = isSelected
         ? Colors.white
         : isEnabled
         ? textPrimaryColor
-        : textSecondaryColor.withOpacity(0.4);
+        : textSecondaryColor.withValues(alpha: 0.4);
 
     final letterColor = isSelected
-        ? Colors.white.withOpacity(0.8)
+        ? Colors.white.withValues(alpha: 0.8)
         : textSecondaryColor;
 
     return GestureDetector(
@@ -891,7 +595,7 @@ class _DayItem extends StatelessWidget {
           color: isSelected
               ? null
               : isToday
-              ? AppColors.gradientStart.withOpacity(0.1)
+              ? AppColors.gradientStart.withValues(alpha: 0.1)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
         ),
@@ -900,7 +604,7 @@ class _DayItem extends StatelessWidget {
           children: [
             Text(
               letter,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
                 color: letterColor,
@@ -909,7 +613,7 @@ class _DayItem extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               number.toString(),
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: numberColor,
@@ -923,96 +627,98 @@ class _DayItem extends StatelessWidget {
 }
 
 // =============================================================================
-// COURSES VIEW
+// DAY PAGER
 // =============================================================================
 
-class _CoursesView extends StatefulWidget {
+/// Swipeable days of one week. Rebuilt (via its key) when the week changes;
+/// swiping past the first/last day moves to the previous/next week.
+class _DayPager extends StatefulWidget {
   final PlanningProvider planning;
-  final PageController pageController;
-  final ValueChanged<int> onPageChanged;
-  final VoidCallback onNextWeek;
-  final VoidCallback onPreviousWeek;
-  final dynamic strings;
+  final AppStrings strings;
 
-  const _CoursesView({
+  const _DayPager({
+    super.key,
     required this.planning,
-    required this.pageController,
-    required this.onPageChanged,
-    required this.onNextWeek,
-    required this.onPreviousWeek,
     required this.strings,
   });
 
   @override
-  State<_CoursesView> createState() => _CoursesViewState();
+  State<_DayPager> createState() => _DayPagerState();
 }
 
-class _CoursesViewState extends State<_CoursesView> {
-  double _overscrollAccumulator = 0;
-  bool _isHandlingOverscroll = false;
+class _DayPagerState extends State<_DayPager> {
   static const double _overscrollThreshold = 80.0;
+
+  late final PageController _controller = PageController(
+    initialPage: widget.planning.selectedDayIndex,
+  );
+  double _overscroll = 0;
+  bool _weekChangeTriggered = false;
+  // True while animating to a day picked elsewhere, so the pages crossed on
+  // the way don't get selected.
+  bool _animating = false;
+
+  @override
+  void didUpdateWidget(_DayPager oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Selection changed from outside (day selector tap): follow it.
+    final target = widget.planning.selectedDayIndex;
+    if (_controller.hasClients && _controller.page?.round() != target) {
+      _animating = true;
+      _controller
+          .animateToPage(
+            target,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+          )
+          .whenComplete(() => _animating = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.horizontal) return false;
+
+    if (notification is ScrollStartNotification) {
+      _overscroll = 0;
+    } else if (notification is OverscrollNotification &&
+        !_weekChangeTriggered) {
+      _overscroll += notification.overscroll;
+      if (_overscroll.abs() > _overscrollThreshold) {
+        _weekChangeTriggered = true;
+        if (_overscroll > 0) {
+          widget.planning.nextWeek();
+        } else {
+          widget.planning.previousWeek();
+        }
+      }
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final days = widget.planning.weekDays;
+
     return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        // Handle overscroll at page boundaries for week transitions
-        if (notification is OverscrollNotification) {
-          // Only handle horizontal overscrolls (from PageView), not vertical (from ListView/RefreshIndicator)
-          if (notification.metrics.axis != Axis.horizontal) return false;
-
-          if (_isHandlingOverscroll) return true;
-
-          final currentPage = widget.pageController.page?.round() ?? 0;
-
-          if (currentPage == 4 && notification.overscroll > 0) {
-            // Friday, swiping right
-            _overscrollAccumulator += notification.overscroll;
-            if (_overscrollAccumulator > _overscrollThreshold) {
-              _isHandlingOverscroll = true;
-              _overscrollAccumulator = 0;
-              widget.onNextWeek();
-              // Reset after a delay to prevent double triggers
-              Future.delayed(const Duration(milliseconds: 500), () {
-                _isHandlingOverscroll = false;
-              });
-            }
-            return true;
-          } else if (currentPage == 0 && notification.overscroll < 0) {
-            // Monday, swiping left
-            _overscrollAccumulator += notification.overscroll.abs();
-            if (_overscrollAccumulator > _overscrollThreshold) {
-              _isHandlingOverscroll = true;
-              _overscrollAccumulator = 0;
-              widget.onPreviousWeek();
-              Future.delayed(const Duration(milliseconds: 500), () {
-                _isHandlingOverscroll = false;
-              });
-            }
-            return true;
-          }
-        }
-
-        if (notification is ScrollStartNotification ||
-            notification is ScrollEndNotification) {
-          _overscrollAccumulator = 0;
-        }
-
-        return false;
-      },
+      onNotification: _onScroll,
       child: PageView.builder(
-        controller: widget.pageController,
-        onPageChanged: widget.onPageChanged,
+        controller: _controller,
         physics: const ClampingScrollPhysics(),
-        itemCount: 5, // Monday to Friday
-        itemBuilder: (context, index) {
-          return _DayPage(
-            planning: widget.planning,
-            dayIndex: index,
-            strings: widget.strings,
-            isOffline: widget.planning.isOffline,
-          );
+        itemCount: days.length,
+        onPageChanged: (index) {
+          if (!_animating) widget.planning.selectDate(days[index]);
         },
+        itemBuilder: (context, index) => _DayPage(
+          planning: widget.planning,
+          date: days[index],
+          strings: widget.strings,
+        ),
       ),
     );
   }
@@ -1020,60 +726,64 @@ class _CoursesViewState extends State<_CoursesView> {
 
 class _DayPage extends StatelessWidget {
   final PlanningProvider planning;
-  final int dayIndex;
-  final dynamic strings;
-  final bool isOffline;
+  final DateTime date;
+  final AppStrings strings;
 
   const _DayPage({
     required this.planning,
-    required this.dayIndex,
+    required this.date,
     required this.strings,
-    required this.isOffline,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (dayIndex >= planning.weekPlanning.length) {
-      return _EmptyDay(
-        message: strings.noClassesScheduled,
-        isOffline: isOffline,
-        strings: strings,
-      );
+    if (!planning.isDayLoaded(date)) {
+      // Never synced: don't pretend the day is empty.
+      if (planning.isOffline) {
+        return ErrorView(
+          message: planning.errorMessage ?? strings.noScheduleAvailable,
+          onRetry: planning.refresh,
+          retryLabel: strings.retry,
+        );
+      }
+      return LoadingIndicator(message: strings.loadingSchedule);
     }
 
-    final dayPlanning = planning.weekPlanning[dayIndex];
-
-    if (!dayPlanning.hasCourses) {
-      return _EmptyDay(
-        message: strings.noClassesScheduled,
-        isOffline: isOffline,
-        strings: strings,
-      );
-    }
+    final courses = planning.coursesForDay(date);
 
     return RefreshIndicator(
       onRefresh: planning.refresh,
       color: AppColors.gradientStart,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(0, 8, 16, 16),
-        itemCount: dayPlanning.courses.length,
-        itemBuilder: (context, index) {
-          final event = dayPlanning.courses[index];
-          return _CourseCard(
-            event: event,
-            strings: strings,
-            onTap: () => _showCourseDetails(context, event, strings),
-          );
-        },
-      ),
+      child: courses.isEmpty
+          ? LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: constraints.maxHeight,
+                  child: _EmptyDay(
+                    message: strings.noClassesScheduled,
+                    isOffline: planning.isOffline,
+                    strings: strings,
+                  ),
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(0, 8, 16, 16),
+              itemCount: courses.length,
+              itemBuilder: (context, index) {
+                final event = courses[index];
+                return _CourseCard(
+                  event: event,
+                  strings: strings,
+                  onTap: () => _showCourseDetails(context, event),
+                );
+              },
+            ),
     );
   }
 
-  void _showCourseDetails(
-    BuildContext context,
-    PlanningEvent event,
-    dynamic strings,
-  ) {
+  void _showCourseDetails(BuildContext context, PlanningEvent event) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1086,7 +796,7 @@ class _DayPage extends StatelessWidget {
 class _EmptyDay extends StatelessWidget {
   final String message;
   final bool isOffline;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _EmptyDay({
     required this.message,
@@ -1096,10 +806,7 @@ class _EmptyDay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Center(
       child: Column(
@@ -1108,12 +815,12 @@ class _EmptyDay extends StatelessWidget {
           Icon(
             Iconsax.calendar_1,
             size: 64,
-            color: textSecondaryColor.withOpacity(0.4),
+            color: textSecondaryColor.withValues(alpha: 0.4),
           ),
           const SizedBox(height: 16),
           Text(
             message,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: textSecondaryColor,
@@ -1123,7 +830,7 @@ class _EmptyDay extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               strings.mayNotBeUpToDate,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: AppColors.warning,
@@ -1142,7 +849,7 @@ class _EmptyDay extends StatelessWidget {
 
 class _CourseCard extends StatelessWidget {
   final PlanningEvent event;
-  final dynamic strings;
+  final AppStrings strings;
   final VoidCallback onTap;
 
   const _CourseCard({
@@ -1155,13 +862,8 @@ class _CourseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOngoing = event.isOngoing;
     final isPast = event.isPast;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1178,7 +880,7 @@ class _CourseCard extends StatelessWidget {
                 children: [
                   Text(
                     event.startTime,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: isPast ? textSecondaryColor : textPrimaryColor,
@@ -1186,7 +888,7 @@ class _CourseCard extends StatelessWidget {
                   ),
                   Text(
                     event.endTime,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 12,
                       color: textSecondaryColor,
                     ),
@@ -1225,23 +927,16 @@ class _CardContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
+    final surfaceVariantColor = context.surfaceVariantColor;
 
     final textColor = isOngoing ? Colors.white : textPrimaryColor;
     final secondaryColor = isOngoing
-        ? Colors.white.withOpacity(0.8)
+        ? Colors.white.withValues(alpha: 0.8)
         : textSecondaryColor;
     final iconColor = isOngoing
-        ? Colors.white.withOpacity(0.9)
+        ? Colors.white.withValues(alpha: 0.9)
         : textSecondaryColor;
 
     return Container(
@@ -1257,7 +952,7 @@ class _CardContent extends StatelessWidget {
         color: isOngoing
             ? null
             : isPast
-            ? surfaceVariantColor.withOpacity(0.5)
+            ? surfaceVariantColor.withValues(alpha: 0.5)
             : surfaceVariantColor,
         borderRadius: BorderRadius.circular(16),
       ),
@@ -1267,7 +962,7 @@ class _CardContent extends StatelessWidget {
           // Title
           Text(
             event.displayTitle,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: textColor,
@@ -1281,7 +976,7 @@ class _CardContent extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               event.typeActivite!,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: secondaryColor,
@@ -1299,7 +994,7 @@ class _CardContent extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   event.salle!,
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: secondaryColor,
@@ -1319,7 +1014,7 @@ class _CardContent extends StatelessWidget {
                 Expanded(
                   child: Text(
                     event.intervenants!,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: secondaryColor,
@@ -1343,19 +1038,16 @@ class _CardContent extends StatelessWidget {
 
 class _CourseDetailSheet extends StatelessWidget {
   final PlanningEvent event;
-  final dynamic strings;
+  final AppStrings strings;
 
   const _CourseDetailSheet({required this.event, required this.strings});
 
   @override
   Widget build(BuildContext context) {
     final isOngoing = event.isOngoing;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? AppColors.surfaceDark : AppColors.surface;
-    final dividerColor = isDark ? AppColors.dividerDark : AppColors.divider;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
+    final surfaceColor = context.surfaceColor;
+    final dividerColor = context.dividerColor;
+    final textPrimaryColor = context.textPrimaryColor;
 
     return Container(
       constraints: BoxConstraints(
@@ -1400,13 +1092,13 @@ class _CourseDetailSheet extends StatelessWidget {
                             end: Alignment.bottomCenter,
                           ),
                     color: isOngoing
-                        ? AppColors.success.withOpacity(0.1)
+                        ? AppColors.success.withValues(alpha: 0.1)
                         : null,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     event.timeRange,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: isOngoing ? AppColors.success : Colors.white,
@@ -1425,8 +1117,8 @@ class _CourseDetailSheet extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    'En cours',
-                    style: GoogleFonts.poppins(
+                    strings.ongoing,
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: AppColors.success,
@@ -1437,9 +1129,7 @@ class _CourseDetailSheet extends StatelessWidget {
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Iconsax.close_circle),
-                  color: isDark
-                      ? AppColors.textSecondaryDark
-                      : AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               ],
             ),
@@ -1454,7 +1144,7 @@ class _CourseDetailSheet extends StatelessWidget {
                   // Title
                   Text(
                     event.displayTitle,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w600,
                       color: textPrimaryColor,
@@ -1473,7 +1163,7 @@ class _CourseDetailSheet extends StatelessWidget {
                       ).createShader(bounds),
                       child: Text(
                         event.typeActivite!,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                           color: Colors.white,
@@ -1517,12 +1207,10 @@ class _CourseDetailSheet extends StatelessWidget {
                     const SizedBox(height: 16),
                     Text(
                       strings.descriptionLabel,
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: isDark
-                            ? AppColors.textSecondaryDark
-                            : AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1530,14 +1218,12 @@ class _CourseDetailSheet extends StatelessWidget {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.surfaceVariantDark
-                            : AppColors.surfaceVariant,
+                        color: context.surfaceVariantColor,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         event.description!,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 14,
                           color: textPrimaryColor,
                           height: 1.5,
@@ -1570,16 +1256,9 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
+    final surfaceVariantColor = context.surfaceVariantColor;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -1602,14 +1281,14 @@ class _DetailRow extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 12,
                     color: textSecondaryColor,
                   ),
                 ),
                 Text(
                   value,
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                     color: valueColor ?? textPrimaryColor,

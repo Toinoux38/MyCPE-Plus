@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../data/models/auth_response.dart';
 import '../data/services/auth_service.dart';
@@ -15,12 +16,34 @@ enum AuthState {
 /// Provider for authentication state management
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
-  
+  late final StreamSubscription<void> _sessionExpiredSub;
+
   AuthState _state = AuthState.initial;
   String? _errorMessage;
   String? _userEmail;
-  
-  AuthProvider({required AuthService authService}) : _authService = authService;
+
+  AuthProvider({required AuthService authService}) : _authService = authService {
+    _sessionExpiredSub = _authService.sessionExpiredStream.listen((_) {
+      _handleSessionExpired();
+    });
+  }
+
+  /// Called when the API returns 401 on an authenticated request.
+  Future<void> _handleSessionExpired() async {
+    // Avoid acting during an already-loading state (e.g. login itself failed).
+    if (_state == AuthState.loading || _state == AuthState.unauthenticated) return;
+    await _authService.logout();
+    _userEmail = null;
+    _errorMessage = 'Votre session a expiré. Veuillez vous reconnecter.';
+    _state = AuthState.unauthenticated;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _sessionExpiredSub.cancel();
+    super.dispose();
+  }
   
   AuthState get state => _state;
   String? get errorMessage => _errorMessage;

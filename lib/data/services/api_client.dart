@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../core/constants/api_constants.dart';
 import '../../core/utils/result.dart';
@@ -8,7 +9,10 @@ import '../../core/utils/result.dart';
 class ApiClient {
   final http.Client _client;
   String? _authToken;
-  
+
+  /// Called when an authenticated request receives a 401 (session expired).
+  VoidCallback? onUnauthorized;
+
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
   
   /// Set authentication token for subsequent requests
@@ -116,6 +120,8 @@ class ApiClient {
     // Handle specific error codes
     switch (statusCode) {
       case 401:
+        // Only fire if a token was present — login failures don't count.
+        if (_authToken != null) onUnauthorized?.call();
         return Result.failure('Invalid credentials', statusCode: 401);
       case 403:
         return Result.failure('Access denied', statusCode: 403);

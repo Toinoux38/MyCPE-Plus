@@ -5,9 +5,13 @@ import 'app_text_styles.dart';
 
 /// Application theme configuration
 abstract final class AppTheme {
+  /// Bundled font (see pubspec.yaml), used by every text of the app.
+  static const String fontFamily = 'Poppins';
+
   static ThemeData get light {
     return ThemeData(
       useMaterial3: true,
+      fontFamily: fontFamily,
       brightness: Brightness.light,
       primaryColor: AppColors.gradientStart,
       scaffoldBackgroundColor: AppColors.background,
@@ -130,6 +134,7 @@ abstract final class AppTheme {
   static ThemeData get dark {
     return ThemeData(
       useMaterial3: true,
+      fontFamily: fontFamily,
       brightness: Brightness.dark,
       primaryColor: AppColors.gradientStart,
       scaffoldBackgroundColor: AppColors.backgroundDark,

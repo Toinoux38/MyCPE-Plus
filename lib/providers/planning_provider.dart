@@ -1,426 +1,277 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import '../core/utils/date_utils.dart' as date_utils;
+import '../core/utils/result.dart';
 import '../data/models/planning_event.dart';
+import '../data/services/home_widget_service.dart';
 import '../data/services/planning_service.dart';
 
-/// Loading state for planning data
-enum PlanningState { initial, loading, loaded, error }
-
-/// Sync status for planning data
-enum PlanningSyncStatus {
-  /// Data is from cache, not yet synced
-  cached,
-
-  /// Currently fetching fresh data from server
-  syncing,
-
-  /// Data is fresh from server
-  synced,
-
-  /// Offline mode, showing cached data
-  offline,
-}
+typedef _Du = date_utils.DateUtils;
 
 /// View mode for the planning screen
 enum PlanningViewMode { day, week, month }
 
-/// Provider for planning/schedule state management
-class PlanningProvider extends ChangeNotifier {
+/// Provider for planning/schedule state management.
+///
+/// All views read the same per-day data from [PlanningService]: navigation is
+/// instant and synchronous, cached days are shown right away, and network
+/// refreshes happen in the background and only notify when something changed.
+class PlanningProvider extends ChangeNotifier with WidgetsBindingObserver {
+  /// Visible data older than this is silently refreshed.
+  static const Duration _staleAfter = Duration(minutes: 15);
+
   final PlanningService _planningService;
 
-  PlanningState _state = PlanningState.initial;
-  PlanningSyncStatus _syncStatus = PlanningSyncStatus.synced;
-  String? _errorMessage;
-  List<DayPlanning> _weekPlanning = [];
-  DateTime _currentMonday = date_utils.DateUtils.getMondayOfWeek(
-    DateTime.now(),
-  );
-  int _selectedDayIndex = 0; // 0 = Monday, 4 = Friday
-  DateTime? _lastSyncTime;
-  bool _isOffline = false;
-  bool _hasInitializedCache = false;
-
-  /// Current view mode (day, week, month)
+  bool _initialized = false;
+  bool _cacheLoaded = false;
   PlanningViewMode _viewMode = PlanningViewMode.day;
-
-  /// Current month being viewed in month mode
-  DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month);
-
-  /// Cached events for the current month (keyed by day)
-  Map<DateTime, List<PlanningEvent>> _monthEvents = {};
+  late DateTime _selectedDate;
+  late DateTime _focusedMonth;
+  final List<(DateTime, DateTime)> _pendingRanges = [];
+  String? _errorMessage;
 
   PlanningProvider({required PlanningService planningService})
     : _planningService = planningService {
-    // Set initial selected day to today if it's a weekday
-    final today = DateTime.now();
-    final monday = date_utils.DateUtils.getMondayOfWeek(today);
-    final dayDiff = today.difference(monday).inDays;
-    if (dayDiff >= 0 && dayDiff <= 4) {
-      _selectedDayIndex = dayDiff;
-    }
+    _resetSelection();
   }
 
-  PlanningState get state => _state;
-  PlanningSyncStatus get syncStatus => _syncStatus;
-  String? get errorMessage => _errorMessage;
-  List<DayPlanning> get weekPlanning => _weekPlanning;
-  DateTime get currentMonday => _currentMonday;
-  bool get isLoading => _state == PlanningState.loading;
-  int get selectedDayIndex => _selectedDayIndex;
-  DateTime? get lastSyncTime => _lastSyncTime;
-  bool get isOffline => _isOffline;
-  bool get isSyncing => _syncStatus == PlanningSyncStatus.syncing;
+  void _resetSelection() {
+    final today = _Du.dateOnly(DateTime.now());
+    // On weekends, start on the upcoming Monday.
+    _selectedDate = _Du.isWeekend(today)
+        ? _Du.addDays(_Du.getMondayOfWeek(today), 7)
+        : today;
+    _focusedMonth = DateTime(_selectedDate.year, _selectedDate.month);
+  }
+
+  // ===========================================================================
+  // STATE
+  // ===========================================================================
+
+  /// False until the local cache has been read.
+  bool get isReady => _cacheLoaded;
   PlanningViewMode get viewMode => _viewMode;
-  DateTime get currentMonth => _currentMonth;
-  Map<DateTime, List<PlanningEvent>> get monthEvents => _monthEvents;
+  DateTime get selectedDate => _selectedDate;
+  DateTime get currentMonday => _Du.getMondayOfWeek(_selectedDate);
+  DateTime get currentMonth => _focusedMonth;
+  bool get isToday => _Du.isSameDay(_selectedDate, DateTime.now());
 
-  /// Get selected date
-  DateTime get selectedDate =>
-      _currentMonday.add(Duration(days: _selectedDayIndex));
+  /// A request for the visible range is running.
+  bool get isSyncing => _pendingRanges.any((r) => _overlapsVisible(r));
 
-  /// Get selected day planning
-  DayPlanning? get selectedDayPlanning {
-    if (_weekPlanning.isEmpty) return null;
-    if (_selectedDayIndex >= _weekPlanning.length) return null;
-    return _weekPlanning[_selectedDayIndex];
+  /// Last network error, cleared on the next successful sync.
+  String? get errorMessage => _errorMessage;
+  bool get isOffline => _errorMessage != null;
+  DateTime? get lastSyncTime => _planningService.lastSyncTime;
+
+  /// Days shown for the current week: Monday to Friday, plus Saturday and
+  /// Sunday when they have courses.
+  List<DateTime> get weekDays => daysOfWeek(currentMonday);
+
+  List<DateTime> daysOfWeek(DateTime monday) => [
+    for (var i = 0; i < 7; i++)
+      if (i < 5 || dayHasCourses(_Du.addDays(monday, i)))
+        _Du.addDays(monday, i),
+  ];
+
+  /// Index of [selectedDate] in [weekDays].
+  int get selectedDayIndex {
+    final index = weekDays.indexWhere((d) => _Du.isSameDay(d, _selectedDate));
+    return index < 0 ? 0 : index;
   }
 
-  /// Check if selected date is today
-  bool get isToday =>
-      date_utils.DateUtils.isSameDay(selectedDate, DateTime.now());
+  bool isDayLoaded(DateTime day) => _planningService.isDayLoaded(day);
 
-  /// Get week range string for current view
-  String get weekRangeString =>
-      date_utils.DateUtils.getWeekRangeString(_currentMonday);
+  /// Valid courses (no breaks / empty slots) of [day], sorted.
+  List<PlanningEvent> coursesForDay(DateTime day) => _planningService
+      .eventsForDay(day)
+      .where((e) => e.isValidCourse)
+      .toList();
 
-  /// Select a day by index (0-4 for Mon-Fri)
-  void selectDay(int index) {
-    if (index >= 0 && index <= 4 && index != _selectedDayIndex) {
-      _selectedDayIndex = index;
-      notifyListeners();
+  bool dayHasCourses(DateTime day) =>
+      _planningService.eventsForDay(day).any((e) => e.isValidCourse);
+
+  DayPlanning dayPlanning(DateTime day) => DayPlanning(
+    date: _Du.dateOnly(day),
+    events: _planningService.eventsForDay(day),
+  );
+
+  // ===========================================================================
+  // LIFECYCLE
+  // ===========================================================================
+
+  /// Load the cache, then sync in the background. Safe to call repeatedly.
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+    WidgetsBinding.instance.addObserver(this);
+
+    await _planningService.loadCache();
+    _cacheLoaded = true;
+    notifyListeners();
+    _pushToHomeWidget();
+
+    // One request for the coming weeks, then whatever is visible if needed.
+    final monday = _Du.getMondayOfWeek(DateTime.now());
+    _syncRange(_Du.addDays(monday, -7), _Du.addDays(monday, 62));
+    _syncVisible();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _cacheLoaded) {
+      _syncVisible();
     }
   }
 
-  /// Load planning with cache-first strategy
-  /// Shows cached data immediately, then fetches fresh data in background
-  Future<void> loadWeekPlanning() async {
-    _errorMessage = null;
-
-    // Try to load from cache first
-    final cachedEvents = await _planningService.getCachedWeekPlanning(
-      _currentMonday,
-    );
-
-    if (cachedEvents != null && cachedEvents.isNotEmpty) {
-      // Show cached data immediately
-      _weekPlanning = _planningService.groupEventsByDay(
-        cachedEvents,
-        _currentMonday,
-      );
-      _state = PlanningState.loaded;
-      _syncStatus = PlanningSyncStatus.cached;
-      notifyListeners();
-
-      // Fetch fresh data in background
-      _fetchFreshDataInBackground();
-    } else {
-      // No cache, show loading and fetch from network
-      _state = PlanningState.loading;
-      _syncStatus = PlanningSyncStatus.syncing;
-      notifyListeners();
-
-      await _fetchFromNetwork();
-    }
-  }
-
-  /// Fetch fresh data in background without blocking UI
-  Future<void> _fetchFreshDataInBackground() async {
-    _syncStatus = PlanningSyncStatus.syncing;
-    notifyListeners();
-
-    final result = await _planningService.fetchAndCacheWeekPlanning(
-      _currentMonday,
-    );
-
-    result.when(
-      success: (events) {
-        _weekPlanning = _planningService.groupEventsByDay(
-          events,
-          _currentMonday,
-        );
-        _state = PlanningState.loaded;
-        _syncStatus = PlanningSyncStatus.synced;
-        _isOffline = false;
-        _lastSyncTime = DateTime.now();
-        notifyListeners();
-      },
-      failure: (message, statusCode) {
-        // Keep showing cached data, just update sync status
-        _syncStatus = PlanningSyncStatus.offline;
-        _isOffline = true;
-        // Don't set error state since we have cached data
-        notifyListeners();
-      },
-    );
-  }
-
-  /// Fetch data from network (used when no cache available)
-  Future<void> _fetchFromNetwork() async {
-    final result = await _planningService.fetchAndCacheWeekPlanning(
-      _currentMonday,
-    );
-
-    result.when(
-      success: (events) {
-        _weekPlanning = _planningService.groupEventsByDay(
-          events,
-          _currentMonday,
-        );
-        _state = PlanningState.loaded;
-        _syncStatus = PlanningSyncStatus.synced;
-        _isOffline = false;
-        _lastSyncTime = DateTime.now();
-        notifyListeners();
-      },
-      failure: (message, statusCode) {
-        _errorMessage = message;
-        _state = PlanningState.error;
-        _syncStatus = PlanningSyncStatus.offline;
-        _isOffline = true;
-        notifyListeners();
-      },
-    );
-  }
-
-  /// Initialize and prefetch extended planning (call on app start)
-  Future<void> initializeWithCache() async {
-    if (_hasInitializedCache) return;
-    _hasInitializedCache = true;
-
-    // Load last sync time immediately for display
-    _lastSyncTime = await _planningService.getLastSyncTime();
-
-    // Load current week first
-    await loadWeekPlanning();
-
-    // Prefetch 2 months of data in background
-    _prefetchExtendedPlanning();
-  }
-
-  /// Prefetch extended planning data in background
-  Future<void> _prefetchExtendedPlanning() async {
-    // Don't block or show any UI for this
-    await _planningService.fetchAndCacheExtendedPlanning();
-    _lastSyncTime = await _planningService.getLastSyncTime();
-  }
-
-  /// Navigate to previous week
-  Future<void> previousWeek() async {
-    _currentMonday = _currentMonday.subtract(const Duration(days: 7));
-    _selectedDayIndex = 4; // Set to Friday immediately before loading
-    await loadWeekPlanning();
-  }
-
-  /// Navigate to next week
-  Future<void> nextWeek() async {
-    _currentMonday = _currentMonday.add(const Duration(days: 7));
-    _selectedDayIndex = 0; // Set to Monday immediately before loading
-    await loadWeekPlanning();
-  }
-
-  /// Navigate to current week and select today
-  Future<void> goToToday() async {
-    final today = DateTime.now();
-    _currentMonday = date_utils.DateUtils.getMondayOfWeek(today);
-    final dayDiff = today.difference(_currentMonday).inDays;
-    _selectedDayIndex = (dayDiff >= 0 && dayDiff <= 4) ? dayDiff : 0;
-    await loadWeekPlanning();
-  }
-
-  /// Navigate to current week
-  Future<void> goToCurrentWeek() async {
-    _currentMonday = date_utils.DateUtils.getMondayOfWeek(DateTime.now());
-    await loadWeekPlanning();
-  }
-
-  /// Force refresh from network (ignores cache)
-  Future<void> forceRefresh() async {
-    _state = PlanningState.loading;
-    _syncStatus = PlanningSyncStatus.syncing;
-    notifyListeners();
-
-    await _fetchFromNetwork();
-  }
-
-  /// Refresh current week data
-  Future<void> refresh() async {
-    await loadWeekPlanning();
-  }
-
-  /// Clear cache and reset
-  Future<void> clearCache() async {
-    await _planningService.clearCache();
-    _hasInitializedCache = false;
-  }
-
-  /// Reset to initial state
-  void reset() {
-    _state = PlanningState.initial;
-    _syncStatus = PlanningSyncStatus.synced;
-    _weekPlanning = [];
-    _currentMonday = date_utils.DateUtils.getMondayOfWeek(DateTime.now());
-    _selectedDayIndex = 0;
-    _errorMessage = null;
-    _isOffline = false;
-    _hasInitializedCache = false;
+  /// Forget the user's data (logout).
+  Future<void> reset() async {
+    if (_initialized) WidgetsBinding.instance.removeObserver(this);
+    _initialized = false;
+    _cacheLoaded = false;
     _viewMode = PlanningViewMode.day;
-    _monthEvents = {};
+    _pendingRanges.clear();
+    _errorMessage = null;
+    _resetSelection();
+    await _planningService.clearCache();
+    HomeWidgetService.pushSchedule(const []).catchError((_) {});
     notifyListeners();
   }
 
+  @override
+  void dispose() {
+    if (_initialized) WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   // ===========================================================================
-  // VIEW MODE
+  // NAVIGATION
   // ===========================================================================
 
-  /// Switch between day, week, and month view
+  void selectDate(DateTime date) {
+    final day = _Du.dateOnly(date);
+    if (_Du.isSameDay(day, _selectedDate)) return;
+    final weekChanged = !_Du.isSameDay(
+      _Du.getMondayOfWeek(day),
+      currentMonday,
+    );
+    _selectedDate = day;
+    notifyListeners();
+    if (weekChanged) _syncVisible();
+  }
+
+  /// Go to the next week, on Monday.
+  void nextWeek() => selectDate(_Du.addDays(currentMonday, 7));
+
+  /// Go to the previous week, on Friday.
+  void previousWeek() => selectDate(_Du.addDays(currentMonday, -3));
+
+  /// Show today (or the upcoming Monday on weekends) in the current view.
+  void goToToday() {
+    _resetSelection();
+    notifyListeners();
+    _syncVisible();
+  }
+
   void setViewMode(PlanningViewMode mode) {
     if (_viewMode == mode) return;
     _viewMode = mode;
-
     if (mode == PlanningViewMode.month) {
-      // Sync month to whatever week we're viewing
-      _currentMonth = DateTime(_currentMonday.year, _currentMonday.month);
-      loadMonthEvents();
-    } else if (mode == PlanningViewMode.week || mode == PlanningViewMode.day) {
-      // If coming from month view, ensure week data is in sync
-      if (_state == PlanningState.loaded) {
-        notifyListeners();
-      }
-    } else {
-      notifyListeners();
-    }
-  }
-
-  // ===========================================================================
-  // MONTH VIEW
-  // ===========================================================================
-
-  /// Navigate to previous month
-  void previousMonth() {
-    _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
-    loadMonthEvents();
-  }
-
-  /// Navigate to next month
-  void nextMonth() {
-    _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
-    loadMonthEvents();
-  }
-
-  /// Go to current month
-  void goToCurrentMonth() {
-    final now = DateTime.now();
-    _currentMonth = DateTime(now.year, now.month);
-    loadMonthEvents();
-  }
-
-  /// Load events for the current month — cache-first, then fetch from API
-  Future<void> loadMonthEvents() async {
-    final firstDay = DateTime(_currentMonth.year, _currentMonth.month, 1);
-    final lastDay = DateTime(_currentMonth.year, _currentMonth.month + 1, 0);
-
-    // Show cached data immediately
-    final cachedEvents = await _planningService.getCachedEventsForRange(
-      firstDay,
-      lastDay,
-    );
-
-    _monthEvents = {};
-    if (cachedEvents != null) {
-      _populateMonthEvents(cachedEvents);
+      _focusedMonth = DateTime(_selectedDate.year, _selectedDate.month);
     }
     notifyListeners();
-
-    // Then fetch full month from API in background to fill gaps
-    _fetchMonthInBackground();
+    _syncVisible();
   }
 
-  /// Fetch the full month from the API and update month events
-  Future<void> _fetchMonthInBackground() async {
-    final result = await _planningService.fetchAndCacheMonthPlanning(
-      _currentMonth,
-    );
+  void previousMonth() => _setMonth(-1);
+  void nextMonth() => _setMonth(1);
 
-    result.when(
-      success: (events) {
-        _monthEvents = {};
-        _populateMonthEvents(events);
-        _lastSyncTime = DateTime.now();
+  void goToCurrentMonth() {
+    final now = DateTime.now();
+    _focusedMonth = DateTime(now.year, now.month);
+    notifyListeners();
+    _syncVisible();
+  }
+
+  void _setMonth(int delta) {
+    _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + delta);
+    notifyListeners();
+    _syncVisible();
+  }
+
+  /// Open [date] in the day view (from the week or month view).
+  void openDay(DateTime date) {
+    _selectedDate = _Du.dateOnly(date);
+    _viewMode = PlanningViewMode.day;
+    notifyListeners();
+    _syncVisible();
+  }
+
+  // ===========================================================================
+  // SYNC
+  // ===========================================================================
+
+  /// Pull-to-refresh: refetch the visible range, completes when done.
+  Future<void> refresh() {
+    final (start, end) = _visibleRange;
+    return _syncRange(start, end);
+  }
+
+  (DateTime, DateTime) get _visibleRange {
+    if (_viewMode == PlanningViewMode.month) {
+      return (
+        _focusedMonth,
+        DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0),
+      );
+    }
+    return (currentMonday, _Du.addDays(currentMonday, 6));
+  }
+
+  bool _overlapsVisible((DateTime, DateTime) range) {
+    final (start, end) = _visibleRange;
+    return !range.$1.isAfter(end) && !range.$2.isBefore(start);
+  }
+
+  /// Fetch the visible range if it is missing or stale.
+  void _syncVisible() {
+    final (start, end) = _visibleRange;
+    final alreadyPending = _pendingRanges.any(
+      (r) => !r.$1.isAfter(start) && !r.$2.isBefore(end),
+    );
+    if (alreadyPending) return;
+
+    final fetchedAt = _planningService.rangeFetchedAt(start, end);
+    if (fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) < _staleAfter) {
+      return;
+    }
+    _syncRange(start, end);
+  }
+
+  Future<void> _syncRange(DateTime start, DateTime end) async {
+    final range = (start, end);
+    _pendingRanges.add(range);
+    if (_overlapsVisible(range)) notifyListeners();
+
+    final result = await _planningService.fetchRange(start, end);
+    if (!_pendingRanges.remove(range)) return; // reset() happened meanwhile
+
+    switch (result) {
+      case Success(data: final changed):
+        final hadError = _errorMessage != null;
+        _errorMessage = null;
+        if (changed) _pushToHomeWidget();
+        if (changed || hadError || _overlapsVisible(range)) notifyListeners();
+      case Failure(:final message):
+        _errorMessage = message;
         notifyListeners();
-      },
-      failure: (message, statusCode) {
-        // Keep showing cached data
-      },
-    );
-  }
-
-  /// Force refresh month data from API
-  Future<void> refreshMonthEvents() async {
-    final result = await _planningService.fetchAndCacheMonthPlanning(
-      _currentMonth,
-    );
-
-    result.when(
-      success: (events) {
-        _monthEvents = {};
-        _populateMonthEvents(events);
-        _lastSyncTime = DateTime.now();
-        notifyListeners();
-      },
-      failure: (message, statusCode) {
-        // Keep existing data
-      },
-    );
-  }
-
-  /// Populate _monthEvents map from a list of events
-  void _populateMonthEvents(List<PlanningEvent> events) {
-    for (final event in events) {
-      if (event.dateDebut != null && event.isValidCourse) {
-        final dayKey = DateTime(
-          event.dateDebut!.year,
-          event.dateDebut!.month,
-          event.dateDebut!.day,
-        );
-        _monthEvents.putIfAbsent(dayKey, () => []).add(event);
-      }
     }
   }
 
-  /// Check if a day has courses in the month view
-  bool dayHasCourses(DateTime date) {
-    final dayKey = DateTime(date.year, date.month, date.day);
-    return _monthEvents.containsKey(dayKey) && _monthEvents[dayKey]!.isNotEmpty;
-  }
-
-  /// Get events for a specific day in the month view
-  List<PlanningEvent> getEventsForDay(DateTime date) {
-    final dayKey = DateTime(date.year, date.month, date.day);
-    return _monthEvents[dayKey] ?? [];
-  }
-
-  /// Select a day from month/week view and switch to day view
-  Future<void> selectDateFromCalendar(DateTime date) async {
-    final monday = date_utils.DateUtils.getMondayOfWeek(date);
-    final dayDiff = date.difference(monday).inDays;
-
-    // Only allow weekdays
-    if (dayDiff < 0 || dayDiff > 4) return;
-
-    _currentMonday = monday;
-    _selectedDayIndex = dayDiff;
-    _viewMode = PlanningViewMode.day;
-
-    await loadWeekPlanning();
+  void _pushToHomeWidget() {
+    final events = _planningService.allEvents;
+    if (events.isEmpty) return;
+    HomeWidgetService.pushSchedule(events).catchError((_) {
+      // Widget update is best-effort.
+    });
   }
 }

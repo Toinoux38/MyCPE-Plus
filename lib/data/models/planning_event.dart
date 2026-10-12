@@ -67,6 +67,21 @@ class PlanningEvent {
     };
   }
 
+  /// Everything the UI shows about this event, to detect real changes.
+  String get contentKey => [
+    id,
+    dateDebut?.toIso8601String(),
+    dateFin?.toIso8601String(),
+    matiere,
+    typeActivite,
+    statutIntervention,
+    intervenants,
+    salle,
+    isBreak,
+    isEmpty,
+    description,
+  ].join('|');
+
   /// Get formatted start time only
   String get startTime {
     if (dateDebut == null) return '';
@@ -127,10 +142,4 @@ class DayPlanning {
 
   /// Check if day has any courses
   bool get hasCourses => courses.isNotEmpty;
-
-  /// Get day name
-  String get dayName => date_utils.DateUtils.formatDayName(date);
-
-  /// Get formatted date
-  String get formattedDate => date_utils.DateUtils.formatForDisplay(date);
 }

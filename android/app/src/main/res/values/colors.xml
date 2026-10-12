@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same as AppColors.background, so the native splash matches the app. -->
+    <color name="splash_background">#ECEFF9</color>
+</resources>

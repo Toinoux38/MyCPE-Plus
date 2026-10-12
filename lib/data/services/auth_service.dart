@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../core/constants/api_constants.dart';
 import '../../core/utils/result.dart';
 import '../models/auth_response.dart';
@@ -8,12 +9,23 @@ import 'token_storage.dart';
 class AuthService {
   final ApiClient _apiClient;
   final TokenStorage _tokenStorage;
-  
+  final StreamController<void> _sessionExpiredController =
+      StreamController<void>.broadcast();
+
+  /// Fires whenever an authenticated API call returns 401 (token expired/revoked).
+  Stream<void> get sessionExpiredStream => _sessionExpiredController.stream;
+
   AuthService({
     required ApiClient apiClient,
     required TokenStorage tokenStorage,
   })  : _apiClient = apiClient,
-        _tokenStorage = tokenStorage;
+        _tokenStorage = tokenStorage {
+    _apiClient.onUnauthorized = () {
+      if (!_sessionExpiredController.isClosed) {
+        _sessionExpiredController.add(null);
+      }
+    };
+  }
   
   /// Login with email and password
   Future<Result<AuthResponse>> login(String email, String password) async {
@@ -57,5 +69,10 @@ class AuthService {
   /// Get stored user email
   Future<String?> getUserEmail() async {
     return _tokenStorage.getUserEmail();
+  }
+
+  void dispose() {
+    _apiClient.onUnauthorized = null;
+    _sessionExpiredController.close();
   }
 }

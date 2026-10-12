@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/localization/app_locale.dart';
 import '../core/localization/app_strings.dart';
+import '../data/services/home_widget_service.dart';
 
 /// Provider for application settings
 class SettingsProvider extends ChangeNotifier {
@@ -45,6 +45,7 @@ class SettingsProvider extends ChangeNotifier {
     
     _isInitialized = true;
     notifyListeners();
+    _pushWidgetLabels();
   }
   
   /// Change the application locale
@@ -53,6 +54,7 @@ class SettingsProvider extends ChangeNotifier {
     
     _locale = newLocale;
     _strings = AppStrings.of(newLocale);
+    _pushWidgetLabels();
     
     try {
       await _storage.write(key: _localeKey, value: newLocale.code);
@@ -99,5 +101,11 @@ class SettingsProvider extends ChangeNotifier {
       default:
         return ThemeMode.system;
     }
+  }
+
+  void _pushWidgetLabels() {
+    HomeWidgetService.pushLabels(_strings).catchError((_) {
+      // Widget update is best-effort.
+    });
   }
 }

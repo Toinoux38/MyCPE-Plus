@@ -7,7 +7,7 @@ class TokenStorage {
   
   TokenStorage({FlutterSecureStorage? storage})
       : _storage = storage ?? const FlutterSecureStorage(
-          aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          aOptions: AndroidOptions(),
           iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
         );
   
@@ -36,9 +36,10 @@ class TokenStorage {
     return _storage.read(key: AppConstants.userEmailKey);
   }
   
-  /// Clear all stored data
+  /// Clear the session (keeps app settings like theme and language)
   Future<void> clearAll() async {
-    await _storage.deleteAll();
+    await _storage.delete(key: AppConstants.tokenKey);
+    await _storage.delete(key: AppConstants.userEmailKey);
   }
   
   /// Check if user is authenticated

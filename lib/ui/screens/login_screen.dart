@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../../core/localization/app_strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 
@@ -20,6 +21,20 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _passwordFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Show session-expiry message if the user was auto-logged out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (auth.errorMessage != null) {
+        _showErrorSnackBar(auth.errorMessage!);
+        auth.clearError();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -62,10 +77,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final strings = context.watch<SettingsProvider>().strings;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = context.isDark;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.backgroundDark : AppColors.background,
+      backgroundColor: context.backgroundColor,
       body: Stack(
         children: [
           // Background image extending behind the card
@@ -104,23 +119,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       Text(
                         strings.signIn,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? AppColors.textPrimaryDark
-                              : AppColors.textPrimary,
+                          color: context.textPrimaryColor,
                         ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
                       Text(
                         strings.signInToAccess,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 14,
-                          color: isDark
-                              ? AppColors.textSecondaryDark
-                              : AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -143,28 +154,25 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildUsernameField(dynamic strings) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildUsernameField(AppStrings strings) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Username',
-          style: GoogleFonts.poppins(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+            color: context.textPrimaryColor,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.surfaceVariantDark
-                : AppColors.surfaceVariant,
+            color: context.surfaceVariantColor,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.border,
+              color: context.borderColor,
             ),
           ),
           child: Row(
@@ -178,10 +186,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   enableSuggestions: false,
                   decoration: InputDecoration(
                     hintText: strings.usernameHint,
-                    hintStyle: GoogleFonts.poppins(
-                      color: isDark
-                          ? AppColors.textSecondaryDark
-                          : AppColors.textSecondary,
+                    hintStyle: TextStyle(
+                      color: context.textSecondaryColor,
                       fontSize: 14,
                     ),
                     border: InputBorder.none,
@@ -191,16 +197,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     prefixIcon: Icon(
                       Icons.person_outline,
-                      color: isDark
-                          ? AppColors.textSecondaryDark
-                          : AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: isDark
-                        ? AppColors.textPrimaryDark
-                        : AppColors.textPrimary,
+                    color: context.textPrimaryColor,
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -220,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 child: Text(
                   '@cpe.fr',
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     color: AppColors.gradientStart,
@@ -234,28 +236,25 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildPasswordField(dynamic strings) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildPasswordField(AppStrings strings) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           strings.password,
-          style: GoogleFonts.poppins(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+            color: context.textPrimaryColor,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.surfaceVariantDark
-                : AppColors.surfaceVariant,
+            color: context.surfaceVariantColor,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.border,
+              color: context.borderColor,
             ),
           ),
           child: TextFormField(
@@ -265,10 +264,8 @@ class _LoginScreenState extends State<LoginScreen> {
             textInputAction: TextInputAction.done,
             decoration: InputDecoration(
               hintText: strings.passwordHint,
-              hintStyle: GoogleFonts.poppins(
-                color: isDark
-                    ? AppColors.textSecondaryDark
-                    : AppColors.textSecondary,
+              hintStyle: TextStyle(
+                color: context.textSecondaryColor,
                 fontSize: 14,
               ),
               border: InputBorder.none,
@@ -278,14 +275,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               prefixIcon: Icon(
                 Icons.lock_outline,
-                color: isDark
-                    ? AppColors.textSecondaryDark
-                    : AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 14,
-              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+              color: context.textPrimaryColor,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -303,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildLoginButton(dynamic strings) {
+  Widget _buildLoginButton(AppStrings strings) {
     return Consumer<AuthProvider>(
       builder: (context, auth, _) {
         return Container(
@@ -317,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: AppColors.gradientStart.withOpacity(0.3),
+                color: AppColors.gradientStart.withValues(alpha: 0.3),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
@@ -340,7 +335,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       )
                     : Text(
                         strings.signIn,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
@@ -355,12 +350,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildFooter() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Text(
       'Fluffin Studio © 2026',
-      style: GoogleFonts.poppins(
+      style: TextStyle(
         fontSize: 12,
-        color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+        color: context.textSecondaryColor,
       ),
       textAlign: TextAlign.center,
     );

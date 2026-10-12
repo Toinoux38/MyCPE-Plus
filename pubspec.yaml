@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.3.0+4
+version: 2.0.0+7
 
 environment:
   sdk: ^3.10.7
@@ -33,27 +33,26 @@ dependencies:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^2.0.0
   
   # Smooth icons
   iconsax_flutter: ^1.0.0
-  
-  # Google Fonts (includes Poppins)
-  google_fonts: ^6.2.1
+
   
   # HTTP client for API calls
   http: ^1.2.0
   
   # Secure storage for tokens
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: ^10.3.1
   
   # State management
   provider: ^6.1.2
   
   # Date formatting
-  intl: ^0.19.0
-  package_info_plus: ^9.0.0
-  flutter_svg: ^2.2.3
+  intl: ^0.20.2
+  package_info_plus: ^10.2.2
+  flutter_svg: ^2.3.0
+  home_widget: ^0.10.0
 
 dev_dependencies:
   flutter_test:
@@ -80,6 +79,19 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
+
+  # Poppins is bundled (not downloaded at runtime) so it works offline from
+  # the first launch. License: assets/fonts/OFL.txt
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

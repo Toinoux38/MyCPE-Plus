@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_extensions.dart';
 import '../../core/utils/date_utils.dart' as date_utils;
 import '../../data/models/planning_event.dart';
 import '../../providers/planning_provider.dart';
+import 'state_views.dart';
 
-/// Week view showing Monday-Friday with course cards for each day.
+/// Week view showing Monday-Friday (plus weekend days with courses).
 class PlanningWeekView extends StatefulWidget {
   final PlanningProvider planning;
-  final dynamic strings;
-  final VoidCallback onPreviousWeek;
-  final VoidCallback onNextWeek;
+  final AppStrings strings;
+  final String locale;
 
   const PlanningWeekView({
     super.key,
     required this.planning,
     required this.strings,
-    required this.onPreviousWeek,
-    required this.onNextWeek,
+    required this.locale,
   });
 
   @override
@@ -28,23 +28,72 @@ class PlanningWeekView extends StatefulWidget {
 
 class _PlanningWeekViewState extends State<PlanningWeekView> {
   double _dragDistance = 0;
-  bool _isProcessingSwipe = false;
+
+  void _onDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() > 500 || _dragDistance.abs() > 80) {
+      if (_dragDistance > 0) {
+        widget.planning.previousWeek();
+      } else {
+        widget.planning.nextWeek();
+      }
+    }
+    _dragDistance = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.planning.state == PlanningState.loading) {
-      return const Center(child: CircularProgressIndicator());
+    final planning = widget.planning;
+    final strings = widget.strings;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
+
+    final days = planning.weekDays;
+    final anyLoaded = days.any(planning.isDayLoaded);
+
+    final Widget content;
+    if (!anyLoaded) {
+      content = planning.isOffline
+          ? ErrorView(
+              message: planning.errorMessage ?? strings.noScheduleAvailable,
+              onRetry: planning.refresh,
+              retryLabel: strings.retry,
+            )
+          : LoadingIndicator(message: strings.loadingSchedule);
+    } else if (!days.any(planning.dayHasCourses)) {
+      content = RefreshIndicator(
+        onRefresh: planning.refresh,
+        color: AppColors.gradientStart,
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: constraints.maxHeight,
+              child: _EmptyWeek(strings: strings),
+            ),
+          ),
+        ),
+      );
+    } else {
+      content = RefreshIndicator(
+        onRefresh: planning.refresh,
+        color: AppColors.gradientStart,
+        child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          itemCount: days.length,
+          itemBuilder: (context, index) {
+            final day = days[index];
+            return _WeekDayRow(
+              dayPlanning: planning.dayPlanning(day),
+              isLoaded: planning.isDayLoaded(day),
+              strings: strings,
+              onDayTap: () => planning.openDay(day),
+            );
+          },
+        ),
+      );
     }
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-
-    final weekRange = widget.planning.weekRangeString;
 
     return Column(
       children: [
@@ -55,7 +104,7 @@ class _PlanningWeekViewState extends State<PlanningWeekView> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               GestureDetector(
-                onTap: widget.onPreviousWeek,
+                onTap: planning.previousWeek,
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Icon(
@@ -66,19 +115,22 @@ class _PlanningWeekViewState extends State<PlanningWeekView> {
                 ),
               ),
               Text(
-                weekRange,
-                style: GoogleFonts.poppins(
+                date_utils.DateUtils.getWeekRangeString(
+                  planning.currentMonday,
+                  locale: widget.locale,
+                ),
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: textPrimaryColor,
                 ),
               ),
               GestureDetector(
-                onTap: widget.onNextWeek,
+                onTap: planning.nextWeek,
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Icon(
-                    Iconsax.arrow_right,
+                    Iconsax.arrow_right_3,
                     size: 20,
                     color: textSecondaryColor,
                   ),
@@ -87,53 +139,20 @@ class _PlanningWeekViewState extends State<PlanningWeekView> {
             ],
           ),
         ),
-        // Week days list
         Expanded(
-          child: widget.planning.weekPlanning.isEmpty
-              ? _EmptyWeek(strings: widget.strings)
-              : GestureDetector(
-                  onHorizontalDragStart: (_) {
-                    _dragDistance = 0;
-                    _isProcessingSwipe = false;
-                  },
-                  onHorizontalDragUpdate: (details) {
-                    if (_isProcessingSwipe) return;
-                    _dragDistance += details.delta.dx;
-                  },
-                  onHorizontalDragEnd: (details) {
-                    if (_isProcessingSwipe) return;
-                    final velocity = details.primaryVelocity ?? 0;
-                    final hasSignificantVelocity = velocity.abs() > 500;
-                    final hasSignificantDistance = _dragDistance.abs() > 80;
-
-                    if (hasSignificantVelocity || hasSignificantDistance) {
-                      _isProcessingSwipe = true;
-                      if (_dragDistance > 0) {
-                        widget.onPreviousWeek();
-                      } else {
-                        widget.onNextWeek();
-                      }
-                    }
-                    _dragDistance = 0;
-                  },
-                  child: RefreshIndicator(
-                    onRefresh: widget.planning.refresh,
-                    color: AppColors.gradientStart,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      itemCount: widget.planning.weekPlanning.length,
-                      itemBuilder: (context, index) {
-                        final dayPlanning = widget.planning.weekPlanning[index];
-                        return _WeekDayRow(
-                          dayPlanning: dayPlanning,
-                          strings: widget.strings,
-                          onDayTap: () => widget.planning
-                              .selectDateFromCalendar(dayPlanning.date),
-                        );
-                      },
-                    ),
-                  ),
-                ),
+          child: GestureDetector(
+            onHorizontalDragStart: (_) => _dragDistance = 0,
+            onHorizontalDragUpdate: (details) =>
+                _dragDistance += details.delta.dx,
+            onHorizontalDragEnd: _onDragEnd,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: KeyedSubtree(
+                key: ValueKey(planning.currentMonday),
+                child: content,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -141,16 +160,13 @@ class _PlanningWeekViewState extends State<PlanningWeekView> {
 }
 
 class _EmptyWeek extends StatelessWidget {
-  final dynamic strings;
+  final AppStrings strings;
 
   const _EmptyWeek({required this.strings});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textSecondaryColor = context.textSecondaryColor;
 
     return Center(
       child: Column(
@@ -159,12 +175,12 @@ class _EmptyWeek extends StatelessWidget {
           Icon(
             Iconsax.calendar_1,
             size: 64,
-            color: textSecondaryColor.withOpacity(0.4),
+            color: textSecondaryColor.withValues(alpha: 0.4),
           ),
           const SizedBox(height: 16),
           Text(
             strings.noClassesScheduled,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: textSecondaryColor,
@@ -178,27 +194,22 @@ class _EmptyWeek extends StatelessWidget {
 
 class _WeekDayRow extends StatelessWidget {
   final DayPlanning dayPlanning;
-  final dynamic strings;
+  final bool isLoaded;
+  final AppStrings strings;
   final VoidCallback onDayTap;
 
   const _WeekDayRow({
     required this.dayPlanning,
+    required this.isLoaded,
     required this.strings,
     required this.onDayTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
-    final surfaceVariantColor = isDark
-        ? AppColors.surfaceVariantDark
-        : AppColors.surfaceVariant;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
+    final surfaceVariantColor = context.surfaceVariantColor;
 
     final isToday = date_utils.DateUtils.isSameDay(
       dayPlanning.date,
@@ -223,7 +234,7 @@ class _WeekDayRow extends StatelessWidget {
                   children: [
                     Text(
                       dayLetter,
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: isToday
@@ -251,7 +262,7 @@ class _WeekDayRow extends StatelessWidget {
                       alignment: Alignment.center,
                       child: Text(
                         dayNumber,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: isToday ? Colors.white : textPrimaryColor,
@@ -287,10 +298,10 @@ class _WeekDayRow extends StatelessWidget {
                   : Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       child: Text(
-                        strings.noClassesScheduled,
-                        style: GoogleFonts.poppins(
+                        isLoaded ? strings.noClassesScheduled : '…',
+                        style: TextStyle(
                           fontSize: 13,
-                          color: textSecondaryColor.withOpacity(0.6),
+                          color: textSecondaryColor.withValues(alpha: 0.6),
                         ),
                       ),
                     ),
@@ -315,13 +326,8 @@ class _WeekCourseChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimaryColor = isDark
-        ? AppColors.textPrimaryDark
-        : AppColors.textPrimary;
-    final textSecondaryColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondary;
+    final textPrimaryColor = context.textPrimaryColor;
+    final textSecondaryColor = context.textSecondaryColor;
 
     final isOngoing = event.isOngoing;
     final isPast = event.isPast;
@@ -345,8 +351,8 @@ class _WeekCourseChip extends StatelessWidget {
               color: isOngoing
                   ? null
                   : isPast
-                  ? textSecondaryColor.withOpacity(0.2)
-                  : AppColors.gradientStart.withOpacity(0.4),
+                  ? textSecondaryColor.withValues(alpha: 0.2)
+                  : AppColors.gradientStart.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -358,7 +364,7 @@ class _WeekCourseChip extends StatelessWidget {
               children: [
                 Text(
                   event.displayTitle,
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: isPast ? textSecondaryColor : textPrimaryColor,
@@ -368,7 +374,7 @@ class _WeekCourseChip extends StatelessWidget {
                 ),
                 Text(
                   event.timeRange,
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w400,
                     color: textSecondaryColor,
@@ -382,12 +388,12 @@ class _WeekCourseChip extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: (isDark ? AppColors.surfaceDark : AppColors.surface),
+                color: (context.surfaceColor),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 event.salle!,
-                style: GoogleFonts.poppins(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: textSecondaryColor,

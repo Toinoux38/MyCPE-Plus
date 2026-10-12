@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/absences_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/grades_provider.dart';
+import '../providers/planning_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -14,13 +17,32 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  late final AuthProvider _auth;
+  bool _wasAuthenticated = false;
+
   @override
   void initState() {
     super.initState();
+    _auth = context.read<AuthProvider>()..addListener(_onAuthChanged);
     // Initialize auth state
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AuthProvider>().initialize();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _auth.initialize());
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  /// Drop the previous user's data on logout / session expiry.
+  void _onAuthChanged() {
+    final isAuthenticated = _auth.isAuthenticated;
+    if (_wasAuthenticated && !isAuthenticated) {
+      context.read<PlanningProvider>().reset();
+      context.read<GradesProvider>().reset();
+      context.read<AbsencesProvider>().reset();
+    }
+    _wasAuthenticated = isAuthenticated;
   }
   
   @override

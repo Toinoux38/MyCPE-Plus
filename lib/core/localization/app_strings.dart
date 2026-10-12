@@ -105,6 +105,9 @@ abstract class AppStrings {
   String get offlineMode;
   String get lastUpdated;
   String get mayNotBeUpToDate;
+  String get justNow;
+  String minutesAgo(int minutes);
+  String get ongoing;
 
   // Planning view modes
   String get dayView;
@@ -331,6 +334,12 @@ class EnglishStrings implements AppStrings {
   String get lastUpdated => 'Updated';
   @override
   String get mayNotBeUpToDate => 'May not be up to date';
+  @override
+  String get justNow => 'just now';
+  @override
+  String minutesAgo(int minutes) => '$minutes min ago';
+  @override
+  String get ongoing => 'Ongoing';
 
   // Planning view modes
   @override
@@ -574,6 +583,12 @@ class FrenchStrings implements AppStrings {
   String get lastUpdated => 'Mis à jour';
   @override
   String get mayNotBeUpToDate => 'Peut ne pas être à jour';
+  @override
+  String get justNow => "à l'instant";
+  @override
+  String minutesAgo(int minutes) => 'il y a $minutes min';
+  @override
+  String get ongoing => 'En cours';
 
   // Planning view modes
   @override
